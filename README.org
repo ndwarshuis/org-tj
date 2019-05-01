@@ -1,0 +1,15 @@
+A library of convenience function for integrating Org-Mode and Taskjuggler.
+
+I have just begun to use TaskJuggler and as such this package is pre-alpha and will grow as I use TaskJuggler more in the future.
+* Motivation
+[[https://github.com/taskjuggler/TaskJuggler][TaskJuggler]] is a highly configurable project management software tool. Emacs already has limited support for this through Org-Mode's export functions. However, I found the export->compile->view workflow to be cumbersome; it litters files in the export directory path and requires awkward navigation to the report directory to view a project in the browser.
+
+Therefore, I developed this package to integrate Org-Mode's export utilities with the TaskJuggler daemon and web server. In this workflow, exported files are simply loaded into the server and opened in the browser in one operation. This workflow is far cleaner and allow much more seemless and transparent integration with the Org-Mode source files.
+* Roadmap
+- [ ] make code production-ready
+  - [ ] add custom variables for user-defined options
+  - [ ] add intuitive error reporting
+  - [ ] fully-define all codepaths
+- [ ] add convenience functions
+  - [ ] task dependency management
+  - [ ] resource search interface
