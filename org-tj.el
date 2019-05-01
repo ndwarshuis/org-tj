@@ -1,4 +1,4 @@
-;;; org-tj3.el --- Org Mode TaskJuggler 3 Integration  -*- lexical-binding: t; -*-
+;;; org-tj.el --- Org Mode TaskJuggler 3 Integration  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2019  Nate Dwarshuis
 
@@ -232,5 +232,5 @@ Add project attributes to PROJECT and also add the project id."
 (advice-add #'org-taskjuggler-compile :around
             #'org-tj3--compile-no-report)
 
-(provide 'org-tj3)
-;;; org-tj3.el ends here
+(provide 'org-tj)
+;;; org-tj.el ends here
