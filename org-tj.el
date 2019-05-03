@@ -171,6 +171,24 @@ Add project attributes to PROJECT and also add the project id."
         :override #'org-tj--get-project-id))
     (funcall orig-fun project info)))
 
+;; TODO this can probably be consolidated
+(defun org-tj--add-task-attributes* (orig-fun task attributes)
+  (print attributes)
+  (let* ((orig-attributes (funcall orig-fun task attributes))
+         (start (-some->>
+                 (org-taskjuggler-get-start task)
+                 (format "start %s\n")))
+         (end (-some->>
+               (org-taskjuggler-get-end task)
+               (format "end %s\n"))))
+    (s-join "" (-non-nil (list orig-attributes start end)))))
+
+(defun org-tj--add-task-attributes (orig-fun task info)
+  (org-tj--with-advice
+      ((#'org-taskjuggler--build-attributes
+        :around #'org-tj--add-task-attributes*))
+    (funcall orig-fun task info)))
+
 (defun org-tj-add-to-server (file)
   "Add tj3 project FILE to web server."
   (call-process-shell-command
@@ -231,6 +249,8 @@ Add project attributes to PROJECT and also add the project id."
             #'org-tj--export-process-and-open-web)
 (advice-add #'org-taskjuggler-compile :around
             #'org-tj--compile-no-report)
+(advice-add #'org-taskjuggler--build-task :around
+            #'org-tj--add-task-attributes)
 
 (provide 'org-tj)
 ;;; org-tj.el ends here
