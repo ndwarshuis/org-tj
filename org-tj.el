@@ -173,7 +173,6 @@ Add project attributes to PROJECT and also add the project id."
 
 ;; TODO this can probably be consolidated
 (defun org-tj--add-task-attributes* (orig-fun task attributes)
-  (print attributes)
   (let* ((orig-attributes (funcall orig-fun task attributes))
          (start (-some->>
                  (org-taskjuggler-get-start task)
@@ -242,6 +241,38 @@ Add project attributes to PROJECT and also add the project id."
              "tj3client -c /home/ndwar/.config/tj3/taskjugglerrc remove %s" i)))))))
    :buffer "*helm taskjuggler buffer*"
    :prompt "Project ID: "))
+
+(defun org-tj--parse-columns (columns)
+  ;; TODO just assume we have a list of column names for now
+  ;; add the column attributes later as a plist (I think?)
+  (->> columns (--map (symbol-name it)) (s-join ", ")))
+
+(defun org-tj--parse-attribute (attr)
+  (let ((key (car attr))
+        (val (cdr attr)))
+    (->>
+     (cl-case key
+       ;; just return the string for now, these are actually composable
+       ;; so will need to process a list
+       (formats val)
+       ;; headlines are just text
+       (headline val)
+       ;; this might need to be a plist because the columns are like
+       ;; id {attrs} id {attrs}
+       (columns (org-tj--parse-columns val))
+       ;; just return the val but need to make sure it is valid
+       (loadunit val)
+       ;; this is actually a logical expression, just return text for now
+       (hideresource val))
+     (format "%s %s" key))))
+  
+(defun org-tj-create-taskreport (name id attrs)
+  "Create a task report definition."
+  (->> attrs
+       (-map #'org-tj--parse-attribute)
+       (s-join "\n")
+       ;; TODO do I care about indenting prettily?
+       (format "taskreport %s %s {\n%s\n}" name id)))
 
 (advice-add #'org-taskjuggler--build-project :around
             #'org-tj--add-project-attributes)
