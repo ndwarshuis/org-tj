@@ -63,6 +63,13 @@ event of an error or nonlocal exit."
   :tag "Org TJ3"
   :group 'org)
 
+(defcustom org-tj-use-id-property nil
+  "Use the :ID: property when t.
+Since this will class with the org-id functions, this is off by
+default and :TASK_ID: will be used instead."
+  :group 'org-tj3
+  :type 'boolean)
+
 (defcustom org-tj-config-file (-> "XDG_CONFIG_HOME"
                                    getenv
                                    file-name-as-directory
@@ -241,6 +248,49 @@ Add project attributes to PROJECT and also add the project id."
              "tj3client -c /home/ndwar/.config/tj3/taskjugglerrc remove %s" i)))))))
    :buffer "*helm taskjuggler buffer*"
    :prompt "Project ID: "))
+
+(defun org-tj--get-ids ()
+  "Return a list of all ID's for tasks in TJ projects."
+  (--> (org-element-parse-buffer)
+       (org-element-map it 'headline
+         (lambda (hl)
+           (when (member org-taskjuggler-project-tag
+                         (org-element-property :tags hl))
+             hl)))
+       (org-element-map it 'headline #'identity)
+       (--map
+        (org-element-property
+         (if org-tj-use-id-property :ID :TASK_ID) it)
+        it)
+       (-non-nil it)
+       (-uniq it)))
+
+(defun org-tj-set-id ()
+  "Set the id for the current task.
+Uniqueness is enforced within projects."
+  (interactive)
+  (unless (member org-taskjuggler-project-tag (org-get-tags-at))
+    (error "Not in taskjuggler project tree"))
+  (let* ((unique-ids (org-tj--get-ids))
+         (default-id (->
+                      (save-excursion
+                        (org-back-to-heading)
+                        (org-element-context))
+                      (org-taskjuggler--build-unique-id unique-ids)))
+         (new-id (read-string
+                  (format "Set ID (default: %s): " default-id)
+                  nil nil default-id)))
+  (cond
+   ;; must be unique
+   ((member new-id unique-ids)
+    (error "ERROR: Non-unique ID given"))
+   ;; must not have whitespace
+   ((s-contains? " " new-id)
+    (error "ERROR: ID has whitespace"))
+   (t
+    (org-set-property
+     (if org-tj-use-id-property "ID" "TASK_ID")
+     new-id)))))
 
 (defconst org-tj--report-attributes-id
   '(accountroot resourceroot taskroot))
