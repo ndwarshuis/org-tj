@@ -163,7 +163,8 @@ not necessary."
 The id is just the 'TASK_ID' org property with 'prj_' appended.
 INFO is a communication channel and is ignored"
   (let ((id (org-element-property :TASK_ID project)))
-    (if id (format "prj_%s" id) (error "No project id found"))))
+    (if id (format "prj_%s" id)
+      (error "ERROR: No project id found"))))
 
 (defun org-tj--add-project-attributes (orig-fun project info)
   "Call ORIG-FUN with PROJECT and INFO.
