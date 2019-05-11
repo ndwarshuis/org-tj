@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2019  Nate Dwarshuis
 
-;; Author: Nic Ferrier <natedwarshuis@gmail.com>
+;; Author: Nate Dwarshuis <natedwarshuis@gmail.com>
 ;; Keywords: outlines
 ;; Homepage: https://github.com/ndwarshuis/org-tj3
 ;; Package-Requires: ((emacs "25") (dash "2.15") (helm "3.2"))
