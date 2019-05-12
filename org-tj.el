@@ -250,15 +250,21 @@ Add project attributes to PROJECT and also add the project id."
    :buffer "*helm taskjuggler buffer*"
    :prompt "Project ID: "))
 
-(defun org-tj--get-ids ()
-  "Return a list of all ID's for tasks in TJ projects."
+(defun org-tj--get-headlines ()
+  "Return list of all org taskjuggler headlines."
   (--> (org-element-parse-buffer)
        (org-element-map it 'headline
          (lambda (hl)
            (when (member org-taskjuggler-project-tag
                          (org-element-property :tags hl))
              hl)))
-       (org-element-map it 'headline #'identity)
+       (org-element-map it 'headline #'identity)))
+
+(defun org-tj--get-ids (&optional headlines)
+  "Return a list of all ID's for tasks in TJ projects.
+Search through HEADLINES or all taskjuggler headlines in the buffer if
+not given."
+  (--> (or headlines (org-tj--get-headlines))
        (--map
         (org-element-property
          (if org-tj-use-id-property :ID :TASK_ID) it)
@@ -266,11 +272,15 @@ Add project attributes to PROJECT and also add the project id."
        (-non-nil it)
        (-uniq it)))
 
+(defun org-tj--in-project-p ()
+  "Check that the cursor is currently in a taskjuggler project"
+  (member org-taskjuggler-project-tag (org-get-tags-at)))
+
 (defun org-tj-set-id ()
   "Set the id for the current task.
 Uniqueness is enforced within projects."
   (interactive)
-  (unless (member org-taskjuggler-project-tag (org-get-tags-at))
+  (unless (org-tj--in-project-p)
     (error "Not in taskjuggler project tree"))
   (let* ((unique-ids (org-tj--get-ids))
          (default-id (->
@@ -281,17 +291,104 @@ Uniqueness is enforced within projects."
          (new-id (read-string
                   (format "Set ID (default: %s): " default-id)
                   nil nil default-id)))
-  (cond
-   ;; must be unique
-   ((member new-id unique-ids)
-    (error "ERROR: Non-unique ID given"))
-   ;; must not have whitespace
-   ((s-contains? " " new-id)
-    (error "ERROR: ID has whitespace"))
-   (t
-    (org-set-property
-     (if org-tj-use-id-property "ID" "TASK_ID")
-     new-id)))))
+    (cond
+     ;; must be unique
+     ((member new-id unique-ids)
+      (error "ERROR: Non-unique ID given"))
+     ;; must not have whitespace
+     ((s-contains? " " new-id)
+      (error "ERROR: ID has whitespace"))
+     (t
+      (org-set-property
+       (if org-tj-use-id-property "ID" "TASK_ID")
+       new-id)))))
+
+(defun org-tj--get-dependencies ()
+  "Return list of dependencies for the current headline."
+  (-some->> (org-entry-get nil "DEPENDS") (s-split "[ ,]* +" )))
+
+;; TODO this just deals with the DEPENDS property
+;; make also want to add blocker
+(defun org-tj-add-depends ()
+  "Set the depends property for a taskjuggler task.
+Will automatically create an ID to the dependency if it does not 
+exist."
+  (interactive)
+  (unless (org-tj--in-project-p)
+    (error "Not in taskjuggler project tree"))
+  ;; TODO filter out headlines in current deps
+  (let* ((cur-deps (org-tj--get-dependencies))
+         (id-prop (if org-tj-use-id-property "ID" "TASK_ID"))
+         (tj-headlines
+          (->>
+           (org-tj--get-headlines)
+           ;; take out the toplevel hl (assume it is first)
+           (-drop 1)
+           ;; take out the current headline
+           (--remove (save-excursion
+                       (org-back-to-heading)
+                       (->> (org-element-context)
+                            (org-element-property :begin)
+                            (eq (org-element-property :begin it)))))
+           ;; take out headlines that have subheadlines
+           (--remove (< 0 (->
+                           (org-element-contents it)
+                           (org-element-map 'headline #'identity)
+                           length)))))
+         (unique-ids
+          (->> tj-headlines
+               (-reductions-from
+                (lambda (a b)
+                  (let ((unique-id (org-taskjuggler--build-unique-id b a)))
+                    (append a (list unique-id))))
+                nil)
+               (-drop 1)
+               (-map #'-last-item)))
+         (mk-display
+          (lambda (unique-id hl)
+            (let* ((hl-id (org-element-property id-prop hl))
+                   (text (org-element-property :raw-value hl)))
+              (if (equal unique-id hl-id) text
+                (concat text " (!)")))))
+         (hl-pos (--map (org-element-property :begin it) tj-headlines))
+         (disp (--zip-with (funcall mk-display it other)
+                           unique-ids tj-headlines))
+         (candidates (->> unique-ids (-zip-pair hl-pos) (-zip-pair disp))))
+    (helm
+     :sources
+     (list
+      (helm-build-sync-source "Link Targets"
+        :candidates (--remove (member (cddr it) cur-deps) candidates)
+        :action
+        `(("Link" .
+           (lambda (h)
+             (let ((id (cdr h))
+                   (begin (car h)))
+               ;; add to DEPENDS if there are existing
+               (cond
+                ((not ',cur-deps)
+                 (org-set-property "DEPENDS" id))
+                ((not (member id ',cur-deps))
+                 (->> id list (append ',cur-deps) (s-join " ")
+                      (org-set-property "DEPENDS"))))
+               ;; set the target id if not set already
+               (save-excursion
+                 (goto-char begin)
+                 (unless (equal id (org-entry-get nil ,id-prop))
+                   (org-set-property ,id-prop id))))))))
+      (helm-build-sync-source "Existing links"
+        :candidates (--filter (member (cddr it) cur-deps) candidates)
+        :action
+        `(("Unlink" .
+           (lambda (h)
+             (let ((new-deps (-remove-item (cdr h) ',cur-deps)))
+               (if new-deps
+                   (->> new-deps
+                        (s-join " ")
+                        (org-set-property "DEPENDS"))
+                 (org-entry-delete nil "DEPENDS"))))))))
+      :buffer "*helm taskjuggler buffer*"
+      :prompt "Project ID: ")))
 
 (defconst org-tj--report-attributes-id
   '(accountroot resourceroot taskroot))
