@@ -250,8 +250,8 @@ Add project attributes to PROJECT and also add the project id."
    :buffer "*helm taskjuggler buffer*"
    :prompt "Project ID: "))
 
-(defun org-tj--get-headlines ()
-  "Return list of all org taskjuggler headlines."
+(defun org-tj--get-project-headlines ()
+  "Return list of all org taskjuggler project headlines."
   (--> (org-element-parse-buffer)
        (org-element-map it 'headline
          (lambda (hl)
@@ -260,11 +260,23 @@ Add project attributes to PROJECT and also add the project id."
              hl)))
        (org-element-map it 'headline #'identity)))
 
-(defun org-tj--get-ids (&optional headlines)
+(defun org-tj--get-resource-headlines ()
+  "Return list of all org taskjuggler resource headlines."
+  (--> (org-element-parse-buffer)
+       (org-element-contents it)
+       ;; only look at top-level resource trees because this is
+       ;; what the parser looks at
+       (--filter (member org-taskjuggler-resource-tag
+                         (org-element-property :tags it))
+                 
+                 it)
+       (org-element-map it 'headline #'identity)))
+
+(defun org-tj--get-task-ids (&optional headlines)
   "Return a list of all ID's for tasks in TJ projects.
 Search through HEADLINES or all taskjuggler headlines in the buffer if
 not given."
-  (--> (or headlines (org-tj--get-headlines))
+  (--> (or headlines (org-tj--get-project-headlines))
        (--map
         (org-element-property
          (if org-tj-use-id-property :ID :TASK_ID) it)
@@ -273,7 +285,7 @@ not given."
        (-uniq it)))
 
 (defun org-tj--in-project-p ()
-  "Check that the cursor is currently in a taskjuggler project"
+  "Check that the cursor is currently in a taskjuggler project."
   (member org-taskjuggler-project-tag (org-get-tags-at)))
 
 (defun org-tj-set-id ()
@@ -282,7 +294,7 @@ Uniqueness is enforced within projects."
   (interactive)
   (unless (org-tj--in-project-p)
     (error "Not in taskjuggler project tree"))
-  (let* ((unique-ids (org-tj--get-ids))
+  (let* ((unique-ids (org-tj--get-task-ids))
          (default-id (->
                       (save-excursion
                         (org-back-to-heading)
@@ -307,23 +319,23 @@ Uniqueness is enforced within projects."
   "Return list of dependencies for the current headline."
   (-some->> (org-entry-get nil "DEPENDS") (s-split "[ ,]* +" )))
 
+(defun org-tj--get-resources ()
+  "Return list of dependencies for the current headline."
+  (-some->> (org-entry-get nil "ALLOCATE") (s-split "[ ,]* +" )))
+
 ;; TODO this just deals with the DEPENDS property
 ;; make also want to add blocker
 (defun org-tj-add-depends ()
   "Set the depends property for a taskjuggler task.
-Will automatically create an ID to the dependency if it does not 
-exist."
+Will automatically create an ID to dependency if it does not exist."
   (interactive)
   (unless (org-tj--in-project-p)
     (error "Not in taskjuggler project tree"))
-  ;; TODO filter out headlines in current deps
   (let* ((cur-deps (org-tj--get-dependencies))
          (id-prop (if org-tj-use-id-property "ID" "TASK_ID"))
          (tj-headlines
           (->>
-           (org-tj--get-headlines)
-           ;; take out the toplevel hl (assume it is first)
-           (-drop 1)
+           (org-tj--get-project-headlines)
            ;; take out the current headline
            (--remove (save-excursion
                        (org-back-to-heading)
@@ -389,6 +401,48 @@ exist."
                  (org-entry-delete nil "DEPENDS"))))))))
       :buffer "*helm taskjuggler buffer*"
       :prompt "Project ID: ")))
+
+(defun org-tj-add-resource ()
+  "Add or remove resource from the current entry."
+  (interactive)
+  (unless (org-tj--in-project-p)
+    (error "Not in taskjuggler project tree"))
+  (let* ((cur-res-ids (org-tj--get-resources))
+         (id-prop (if org-tj-use-id-property "ID" "TASK_ID"))
+         (res-ids
+          (->>
+           (org-tj--get-resource-headlines)
+           ;; only need the headlines with resource_id's
+           (--map (org-element-property :RESOURCE_ID it))
+           -non-nil
+           -uniq)))
+    (helm
+     :sources
+     (list
+      (helm-build-sync-source "Link Targets"
+        :candidates (--remove (member it cur-res-ids) res-ids)
+        :action
+        `(("Link" .
+           (lambda (id)
+             (cond
+              ((not ',cur-res-ids)
+               (org-set-property "ALLOCATE" id))
+              ((not (member id ',cur-res-ids))
+               (->> id list (append ',cur-res-ids) (s-join " ")
+                    (org-set-property "ALLOCATE"))))))))
+     (helm-build-sync-source "Existing links"
+       :candidates (--filter (member it cur-res-ids) res-ids)
+       :action
+       `(("Unlink" .
+          (lambda (id)
+            (let ((new-res-ids (-remove-item id ',cur-res-ids)))
+              (if new-res-ids
+                  (->> new-res-ids
+                       (s-join " ")
+                       (org-set-property "ALLOCATE"))
+                (org-entry-delete nil "ALLOCATE"))))))))
+    :buffer "*helm taskjuggler buffer*"
+    :prompt "Project ID: ")))
 
 (defconst org-tj--report-attributes-id
   '(accountroot resourceroot taskroot))
