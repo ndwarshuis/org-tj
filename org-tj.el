@@ -890,7 +890,8 @@ contents of hidden elements.
 Return a list of reports."
   (interactive)
   (let ((file (org-tj-export nil subtreep visible-only)))
-    (org-tj-compile file)))
+    (print file)
+    (org-tj--load file)))
 
 ;;;###autoload
 (defun org-tj-export-process-and-open (&optional subtreep visible-only)
@@ -904,45 +905,79 @@ If you are targeting TaskJuggler 2.4 (see
 `org-tj-target-version') the processing and display of
 the reports is done using the TaskJuggler GUI."
   (interactive)
-  (if (< org-tj-target-version 3.0)
-      (let* ((process-name "TaskJugglerUI")
-	     (command
-	      (concat process-name " "
-		      (org-tj-export nil subtreep visible-only))))
-	(start-process-shell-command process-name nil command))
-    (dolist (report (org-tj-export-and-process subtreep visible-only))
-      (org-open-file report))))
+  ;; TODO remove tj2 codepath
+  ;; (if (< org-tj-target-version 3.0)
+  ;;     (let* ((process-name "TaskJugglerUI")
+  ;;            (command
+  ;;             (concat process-name " "
+  ;;                     (org-tj-export nil subtreep visible-only))))
+  ;;       (start-process-shell-command process-name nil command))
+  (let ((reports (org-tj-export-and-process subtreep visible-only)))
+    (print reports)
+    (dolist (report reports)
+      ;; (org-open-file report))))
+      (org-tj-open-in-browser report))))
 
-(defun org-tj-compile (file)
-  "Compile a TaskJuggler file.
-
-FILE is the name of the file being compiled.  Processing is done
+(defun org-tj--load (file)
+  "Load a TaskJuggler file.
+FILE is the name of the file being loaded.  Processing is done
 through the command given in `org-tj-process-command'.
-
 Return a list of reports."
   (let* ((full-name (file-truename file))
-	 (out-dir
-	  (expand-file-name
-	   org-tj-reports-directory (file-name-directory file)))
-	 errors)
+         (out-dir
+          (expand-file-name
+           org-tj-reports-directory (file-name-directory file)))
+         errors)
     (message (format "Processing TaskJuggler file %s..." file))
     (save-window-excursion
       (let ((outbuf (get-buffer-create "*Org Taskjuggler Output*")))
-	(unless (file-directory-p out-dir)
-	  (make-directory out-dir t))
-	(with-current-buffer outbuf (erase-buffer))
-	(shell-command
-	 (replace-regexp-in-string
-	  "%f" (shell-quote-argument full-name)
-	  (replace-regexp-in-string
-	   "%o" (shell-quote-argument out-dir)
-	   org-tj-process-command t t) t t) outbuf)
-	;; Collect standard errors from output buffer.
-	(setq errors (org-tj--collect-errors outbuf)))
+        (with-current-buffer outbuf (erase-buffer))
+        (--> (org-tj--cmd 'client "add" "%f")
+             (replace-regexp-in-string
+              "%o" (shell-quote-argument out-dir)
+              it t t)
+             (replace-regexp-in-string
+              "%f" (shell-quote-argument full-name)
+              it t t)
+             (shell-command it outbuf))
+        ;; Collect standard errors from output buffer.
+        (setq errors (org-tj--collect-errors outbuf)))
       (if (not errors)
-	  (message "Process completed.")
-	(error (format "TaskJuggler failed with errors: %s" errors))))
+          (message "Process completed.")
+        (error (format "TaskJuggler failed with errors: %s" errors))))
     (file-expand-wildcards (format "%s/*.html" out-dir))))
+
+;; TODO use this function in a separate compile export path
+;; (defun org-tj-compile (file)
+;;   "Compile a TaskJuggler file.
+
+;; FILE is the name of the file being compiled.  Processing is done
+;; through the command given in `org-tj-process-command'.
+
+;; Return a list of reports."
+;;   (let* ((full-name (file-truename file))
+;; 	 (out-dir
+;; 	  (expand-file-name
+;; 	   org-tj-reports-directory (file-name-directory file)))
+;; 	 errors)
+;;     (message (format "Processing TaskJuggler file %s..." file))
+;;     (save-window-excursion
+;;       (let ((outbuf (get-buffer-create "*Org Taskjuggler Output*")))
+;; 	(unless (file-directory-p out-dir)
+;; 	  (make-directory out-dir t))
+;; 	(with-current-buffer outbuf (erase-buffer))
+;; 	(shell-command
+;; 	 (replace-regexp-in-string
+;; 	  "%f" (shell-quote-argument full-name)
+;; 	  (replace-regexp-in-string
+;; 	   "%o" (shell-quote-argument out-dir)
+;; 	   org-tj-process-command t t) t t) outbuf)
+;; 	;; Collect standard errors from output buffer.
+;; 	(setq errors (org-tj--collect-errors outbuf)))
+;;       (if (not errors)
+;; 	  (message "Process completed.")
+;; 	(error (format "TaskJuggler failed with errors: %s" errors))))
+;;     (file-expand-wildcards (format "%s/*.html" out-dir))))
 
 (defun org-tj--collect-errors (buffer)
   "Collect some kind of errors from \"tj3\" command output.
@@ -998,23 +1033,23 @@ ARGS are strings appended to the end of the command."
      (-insert-at 1 (concat "-c " org-tj-config-file) it))
    (s-join " " it)))
 
-(defun org-tj--compile-no-report (orig-fn file)
-  "Process FILE using ORIG-FN but don't compile to a report.
-Instead override the `org-tj-process-command' such that FILE
-added to the web server, and don't make the report directory as it is
-not necessary."
-  (let ((file (expand-file-name file)))
-    (org-tj--with-advice
-        ;; don't make a reports directory
-        ((#'make-directory :override #'ignore))
-      ;; override the original process command to load into server
-      (let ((org-tj-process-command (org-tj--cmd 'client "add" "%f")))
-        (funcall orig-fn file)))
-    ;; just return the file path when done
-    ;; the list is necessary for org-tj-export-process-and-open
-    ;; since the code that opens the files is actually a loop that
-    ;; expects a list
-    (list file)))
+;; (defun org-tj--compile-no-report (orig-fn file)
+;;   "Process FILE using ORIG-FN but don't compile to a report.
+;; Instead override the `org-tj-process-command' such that FILE
+;; added to the web server, and don't make the report directory as it is
+;; not necessary."
+;;   (let ((file (expand-file-name file)))
+;;     (org-tj--with-advice
+;;         ;; don't make a reports directory
+;;         ((#'make-directory :override #'ignore))
+;;       ;; override the original process command to load into server
+;;       (let ((org-tj-process-command (org-tj--cmd 'client "add" "%f")))
+;;         (funcall orig-fn file)))
+;;     ;; just return the file path when done
+;;     ;; the list is necessary for org-tj-export-process-and-open
+;;     ;; since the code that opens the files is actually a loop that
+;;     ;; expects a list
+;;     (list file)))
 
 (defun org-tj-open-id-in-browser (id)
   "Open project ID in the default web browser."
@@ -1032,11 +1067,11 @@ not necessary."
        (nth 1 it)
        (org-tj-open-id-in-browser it)))
        
-(defun org-tj--export-process-and-open-web (orig-fun &rest args)
-  "Process ARGS using ORIG-FUN but open files in browser."
-  (org-tj--with-advice
-      ((#'org-open-file :override #'org-tj-open-in-browser))
-    (apply orig-fun args)))
+;; (defunorg-tj--export-process-and-open-web (orig-fun &rest args)
+;;   "Process ARGS using ORIG-FUN but open files in browser."
+;;   (org-tj--with-advice
+;;       ((#'org-open-file :override #'org-tj-open-in-browser))
+;;     (apply orig-fun args)))
 
 ;; (defun org-tj--add-attributes (orig-fun &rest args)
 ;;   "Call ORIG-FUN with ARGS and add extra attributes to projects."
@@ -1421,10 +1456,10 @@ Will automatically create an ID to dependency if it does not exist."
 
 ;; (advice-add #'org-tj--build-project :around
 ;;             #'org-tj--add-project-attributes)
-(advice-add #'org-tj-export-process-and-open :around
-            #'org-tj--export-process-and-open-web)
-(advice-add #'org-tj-compile :around
-            #'org-tj--compile-no-report)
+;; (advice-add #'org-tj-export-process-and-open :around
+;;             #'org-tj--export-process-and-open-web)
+;; (advice-add #'org-tj-compile :around
+;;             #'org-tj--compile-no-report)
 (advice-add #'org-tj--build-task :around
             #'org-tj--add-task-attributes)
 
