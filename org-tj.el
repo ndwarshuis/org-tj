@@ -759,18 +759,18 @@ a unique id will be associated to it."
             (org-element-property :COMPLETE task)))
          (depends (org-tj-resolve-dependencies task info))
          (effort (let ((property
-			(intern (concat ":" (upcase org-effort-property)))))
-		   (org-element-property property task)))
+                        (intern (concat ":" (upcase org-effort-property)))))
+                   (org-element-property property task)))
          (milestone
           (or (org-element-property :MILESTONE task)
               (not (or (org-element-map (org-element-contents task) 'headline
-			 'identity info t)  ; Has task any child?
-		       effort
-		       (org-element-property :LENGTH task)
-		       (org-element-property :DURATION task)
-		       (and (org-tj-get-start task)
-			    (org-tj-get-end task))
-		       (org-element-property :PERIOD task)))))
+                         'identity info t)  ; Has task any child?
+                       effort
+                       (org-element-property :LENGTH task)
+                       (org-element-property :DURATION task)
+                       (and (org-tj-get-start task)
+                            (org-tj-get-end task))
+                       (org-element-property :PERIOD task)))))
          (priority
           (let ((pri (org-element-property :priority task)))
             (and pri
@@ -800,18 +800,26 @@ a unique id will be associated to it."
      (and priority (format "  priority %s\n" priority))
      (and milestone "  milestone\n")
      ;; Add other valid attributes.
+     ;; TODO this can be cleaned up
      (org-tj--indent-string
-      (org-tj--build-attributes
-       task org-tj-valid-task-attributes))
-     ;; Add inner tasks.
-     (org-tj--indent-string
-      (mapconcat 'identity
-                 (org-element-map (org-element-contents task) 'headline
-                   (lambda (hl) (org-tj--build-task hl info))
-                   info nil 'headline)
-                 ""))
-     ;; Closing task.
-     "}\n")))
+      (let* ((orig-attributes (org-tj--build-attributes
+                               task org-tj-valid-task-attributes))
+             (start (-some->>
+                     (org-tj-get-start task)
+                     (format "start %s\n")))
+             (end (-some->>
+                   (org-tj-get-end task)
+                   (format "end %s\n"))))
+        (s-join "" (-non-nil (list orig-attributes start end)))))
+      ;; Add inner tasks.
+      (org-tj--indent-string
+       (mapconcat 'identity
+                  (org-element-map (org-element-contents task) 'headline
+                    (lambda (hl) (org-tj--build-task hl info))
+                    info nil 'headline)
+                  ""))
+      ;; Closing task.
+      "}\n")))
 
 
 ;;; Interactive Functions
@@ -1112,22 +1120,22 @@ INFO is a communication channel and is ignored"
 ;;         :override #'org-tj--get-project-id))
 ;;     (funcall orig-fun project info)))
 
-;; TODO this can probably be consolidated
-(defun org-tj--add-task-attributes* (orig-fun task attributes)
-  (let* ((orig-attributes (funcall orig-fun task attributes))
-         (start (-some->>
-                 (org-tj-get-start task)
-                 (format "start %s\n")))
-         (end (-some->>
-               (org-tj-get-end task)
-               (format "end %s\n"))))
-    (s-join "" (-non-nil (list orig-attributes start end)))))
+;; ;; TODO this can probably be consolidated
+;; (defun org-tj--add-task-attributes* (orig-fun task attributes)
+;;   (let* ((orig-attributes (funcall orig-fun task attributes))
+;;          (start (-some->>
+;;                  (org-tj-get-start task)
+;;                  (format "start %s\n")))
+;;          (end (-some->>
+;;                (org-tj-get-end task)
+;;                (format "end %s\n"))))
+;;     (s-join "" (-non-nil (list orig-attributes start end)))))
 
-(defun org-tj--add-task-attributes (orig-fun task info)
-  (org-tj--with-advice
-      ((#'org-tj--build-attributes
-        :around #'org-tj--add-task-attributes*))
-    (funcall orig-fun task info)))
+;; (defun org-tj--add-task-attributes (orig-fun task info)
+;;   (org-tj--with-advice
+;;       ((#'org-tj--build-attributes
+;;         :around #'org-tj--add-task-attributes*))
+;;     (funcall orig-fun task info)))
 
 (defun org-tj-add-to-server (file)
   "Add tj3 project FILE to web server."
@@ -1461,8 +1469,8 @@ Will automatically create an ID to dependency if it does not exist."
 ;;             #'org-tj--export-process-and-open-web)
 ;; (advice-add #'org-tj-compile :around
 ;;             #'org-tj--compile-no-report)
-(advice-add #'org-tj--build-task :around
-            #'org-tj--add-task-attributes)
+;; (advice-add #'org-tj--build-task :around
+;;             #'org-tj--add-task-attributes)
 
 (provide 'org-tj)
 ;;; org-tj.el ends here
