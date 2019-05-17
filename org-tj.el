@@ -656,27 +656,35 @@ PROJECT is a headline.  INFO is a plist used as a communication
 channel.  If no start date is specified, start today.  If no end
 date is specified, end `org-tj-default-project-duration'
 days from now."
-  (concat
-   ;; Opening project.
-   (format "project %s \"%s\" \"%s\" %s %s {\n"
-	   (org-tj-get-id project info)
-	   (org-tj-get-name project)
-	   ;; Version is obtained through :TASKJUGGLER_VERSION:
-	   ;; property or `org-tj-default-project-version'.
-	   (or (org-element-property :VERSION project)
-	       org-tj-default-project-version)
-	   (or (org-tj-get-start project)
-	       (format-time-string "%Y-%m-%d"))
-	   (let ((end (org-tj-get-end project)))
-	     (or (and end (format "- %s" end))
-		 (format "+%sd"
-			 org-tj-default-project-duration))))
-   ;; Add attributes.
-   (org-tj--indent-string
-    (org-tj--build-attributes
-     project org-tj-valid-project-attributes))
-   ;; Closing project.
-   "}\n"))
+  (let* ((first-line
+          (format "project %s \"%s\" \"%s\" %s %s {\n"
+                  (org-tj--get-project-id project info)
+                  (org-tj-get-name project)
+                  ;; Version is obtained through :TASKJUGGLER_VERSION:
+                  ;; property or `org-tj-default-project-version'.
+                  (or (org-element-property :VERSION project)
+                      org-tj-default-project-version)
+                  (or (org-tj-get-start project)
+                      (format-time-string "%Y-%m-%d"))
+                  (let ((end (org-tj-get-end project)))
+                    (or (and end (format "- %s" end))
+                        (format "+%sd"
+                                org-tj-default-project-duration)))))
+         (orig-attrs (--> (org-tj--build-attributes
+                           project org-tj-valid-project-attributes)
+                          (s-split "\n" it t)
+                          (--map (s-split-up-to " " it 1 t) it)
+                          (--map (cons (car it) (cadr it)) it)))
+         (add-attrs
+          (--> org-tj-default-attributes
+               (--remove (assoc-string (car it) orig-attrs) it)))
+         (attrs (--> orig-attrs
+                     (append it add-attrs)
+                     (--map (format "%s %s\n" (car it) (cdr it)) it)
+                     (string-join it)
+                     (org-tj--indent-string it))))
+    ;; Closing project.
+    (concat first-line attrs "}\n")))
 
 (defun org-tj--build-resource (resource info)
   "Return a resource declaration.
@@ -1030,22 +1038,22 @@ not necessary."
       ((#'org-open-file :override #'org-tj-open-in-browser))
     (apply orig-fun args)))
 
-(defun org-tj--add-attributes (orig-fun &rest args)
-  "Call ORIG-FUN with ARGS and add extra attributes to projects."
-  ;; assume the original list is a newline-delimited string
-  ;; break this string into cons cells of keyval pairs
-  (let* ((orig-attributes
-          (--> (apply orig-fun args)
-               (s-split "\n" it t)
-               (--map (s-split-up-to " " it 1 t) it)
-               (--map (cons (car it) (cadr it)) it)))
-         (add-attributes
-          (--> org-tj-default-attributes
-               (--remove (assoc-string (car it) orig-attributes) it))))
-    (--> orig-attributes
-         (append it add-attributes)
-         (--map (format "%s %s\n" (car it) (cdr it)) it)
-         (string-join it))))
+;; (defun org-tj--add-attributes (orig-fun &rest args)
+;;   "Call ORIG-FUN with ARGS and add extra attributes to projects."
+;;   ;; assume the original list is a newline-delimited string
+;;   ;; break this string into cons cells of keyval pairs
+;;   (let* ((orig-attributes
+;;           (--> (apply orig-fun args)
+;;                (s-split "\n" it t)
+;;                (--map (s-split-up-to " " it 1 t) it)
+;;                (--map (cons (car it) (cadr it)) it)))
+;;          (add-attributes
+;;           (--> org-tj-default-attributes
+;;                (--remove (assoc-string (car it) orig-attributes) it))))
+;;     (--> orig-attributes
+;;          (append it add-attributes)
+;;          (--map (format "%s %s\n" (car it) (cdr it)) it)
+;;          (string-join it))))
 
 (defun org-tj--get-project-id (project info)
   "Get the project id from PROJECT.
@@ -1055,18 +1063,18 @@ INFO is a communication channel and is ignored"
     (if id (format "prj_%s" id)
       (error "ERROR: No project id found"))))
 
-(defun org-tj--add-project-attributes (orig-fun project info)
-  "Call ORIG-FUN with PROJECT and INFO.
-Add project attributes to PROJECT and also add the project id."
-  (org-tj--with-advice
-      ;; add default attributes
-      ((#'org-tj--build-attributes
-        :around #'org-tj--add-attributes)
-       ;; add the project id
-       ;; just use the toplevel id and add "prj_" to the front
-       (#'org-tj-get-id
-        :override #'org-tj--get-project-id))
-    (funcall orig-fun project info)))
+;; (defun org-tj--add-project-attributes (orig-fun project info)
+;;   "Call ORIG-FUN with PROJECT and INFO.
+;; Add project attributes to PROJECT and also add the project id."
+;;   (org-tj--with-advice
+;;       ;; add default attributes
+;;       ((#'org-tj--build-attributes
+;;         :around #'org-tj--add-attributes)
+;;        ;; add the project id
+;;        ;; just use the toplevel id and add "prj_" to the front
+;;        (#'org-tj-get-id
+;;         :override #'org-tj--get-project-id))
+;;     (funcall orig-fun project info)))
 
 ;; TODO this can probably be consolidated
 (defun org-tj--add-task-attributes* (orig-fun task attributes)
@@ -1411,8 +1419,8 @@ Will automatically create an ID to dependency if it does not exist."
        ;; TODO do I care about indenting prettily?
        (format "taskreport %s %s {\n%s\n}" name id)))
 
-(advice-add #'org-tj--build-project :around
-            #'org-tj--add-project-attributes)
+;; (advice-add #'org-tj--build-project :around
+;;             #'org-tj--add-project-attributes)
 (advice-add #'org-tj-export-process-and-open :around
             #'org-tj--export-process-and-open-web)
 (advice-add #'org-tj-compile :around
