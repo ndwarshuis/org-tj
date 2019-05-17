@@ -890,8 +890,10 @@ contents of hidden elements.
 Return a list of reports."
   (interactive)
   (let ((file (org-tj-export nil subtreep visible-only)))
-    (print file)
-    (org-tj--load file)))
+    (org-tj--load file)
+    ;; TODO this is a silly hack
+    ;; return file as list
+    (list file)))
 
 ;;;###autoload
 (defun org-tj-export-process-and-open (&optional subtreep visible-only)
@@ -915,7 +917,6 @@ the reports is done using the TaskJuggler GUI."
   (let ((reports (org-tj-export-and-process subtreep visible-only)))
     (print reports)
     (dolist (report reports)
-      ;; (org-open-file report))))
       (org-tj-open-in-browser report))))
 
 (defun org-tj--load (file)
