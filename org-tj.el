@@ -38,7 +38,7 @@
 (require 'subr-x)
 (require 'helm)
 (require 'ox)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 ;;; User Variables
 
@@ -369,25 +369,16 @@ headlines and their associated ID."
 
 ;; TODO this shouldn't be necessary, just use the tree from the
 ;; toplevel exporter
-(defun org-tj-get-project (info)
-  "Return project in parse tree.
-INFO is a plist used as a communication channel.  First headline
-in buffer with `org-tj-project-tag' defines the project.
-If no such task is defined, pick the first headline in buffer.
-If there is no headline at all, return nil."
-  (let ((tree (plist-get info :parse-tree)))
-    (or (org-element-map tree 'headline
-	  (lambda (hl)
-	    (and (member org-tj-project-tag
-			 (org-export-get-tags hl info))
-		 hl))
-	  info t)
-	(org-element-map tree 'headline 'identity info t))))
+(defun org-tj-get-project (tree)
+  "Return list of headlines marked with `org-tj-project-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (and (member org-tj-project-tag (org-element-property :tags hl)) hl))))
 
 (defun org-tj-get-id (item ids)
-  "Return id for task or resource ITEM.
-ITEM is a headline.  INFO is a plist used as a communication
-channel.  Return value is a string."
+  "Return id for task or resource ITEM and list of IDS."
   (cdr (assq item ids)))
 
 (defun org-tj-get-name (item)
@@ -467,10 +458,10 @@ ID is a string."
 
 ;;; Dependencies
 
-(defun org-tj-resolve-dependencies (task info)
+(defun org-tj-resolve-dependencies (task info tree)
   "Return a list of all tasks TASK depends on.
 TASK is a headline.  INFO is a plist used as a communication
-channel."
+channel. TREE is the buffer parse tree."
   (let ((deps-ids
          ;; Get all dependencies specified in BLOCKER and DEPENDS task
          ;; properties.  Clean options from them.
@@ -483,7 +474,7 @@ channel."
     (when deps-ids
       ;; Find tasks with :task_id: property matching id in DEPS-IDS.
       ;; Add them to DEPENDS.
-      (let* ((project (org-tj-get-project info))
+      (let* ((project (org-tj-get-project tree))
              (tasks (if org-tj-keep-project-as-task project
                       (org-element-contents project))))
         (setq depends
@@ -547,14 +538,42 @@ doesn't include leading \"depends\"."
 
 ;;; Translator Functions
 
+;; (defun org-tj--get-resource-headlines (tree)
+;;   "Return resource list from first subtree tagged with `org-tj-resource-tag'.
+;; TREE is the buffer parse tree. Only headlines with the RESOURCE_ID
+;; property are returned."
+;;   (--> tree
+;;        (org-element-map it 'headline
+;;          (lambda (hl)
+;;            (when (member org-tj-resource-tag
+;;                          (org-element-property :tags hl))
+;;              hl))
+;;          nil t)
+;;        (org-element-map it 'headline #'identity)
+       ;; (--filter (org-element-property :RESOURCE_ID it) it)))
+
+(defun org-tj--get-reports (tree)
+  "Return reports tree from TREE."
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (and (member org-tj-report-tag
+                   (org-element-property :tags hl))
+           hl))
+    nil t)
+  ;; TODO deal with this later
+  nil)
+
 (defun org-tj-project-plan (contents info)
   "Build TaskJuggler project plan.
 CONTENTS is ignored.  INFO is a plist holding export options.
 Return complete project plan as a string in TaskJuggler syntax."
   (let* ((tree (plist-get info :parse-tree))
-         
-         (project (or (org-tj-get-project info)
-                      (error "No project specified"))))
+         ;; TODO return more than one tree if more than one tagged
+         (project (car (or (org-tj-get-project tree)
+                           (error "No project specified"))))
+         (main-resources (org-tj--get-resource-headlines tree))
+         (resource-ids (org-tj-assign-resource-ids main-resources))
+         (main-reports (org-tj--get-reports tree)))
     (concat
      ;; 1. Insert header.
      (org-element-normalize-string org-tj-default-global-header)
@@ -564,77 +583,49 @@ Return complete project plan as a string in TaskJuggler syntax."
      (org-element-normalize-string org-tj-default-global-properties)
      ;; 4. Insert resources.  Provide a default one if none is
      ;;    specified.
-     (let* ((main-resources
-             ;; Collect contents from various trees marked with
-             ;; `org-tj-resource-tag'.  Only gather top level
-             ;; resources.
-             (apply 'append
-                    (org-element-map tree 'headline
-                      (lambda (hl)
-                        (and (member org-tj-resource-tag
-                                     (org-export-get-tags hl info))
-                             (org-element-map (org-element-contents hl) 'headline
-                               'identity info nil 'headline)))
-                      info nil 'headline)))
-            (resource-ids (org-tj-assign-resource-ids main-resources)))
-       (concat
-        (if main-resources
-            (mapconcat
-             (lambda (resource) (org-tj--build-resource resource info resource-ids))
-             main-resources "")
-          (format "resource %s \"%s\" {\n}\n" (user-login-name) user-full-name))
-        ;; 5. Insert tasks.
-        (let* ((main-tasks
-                ;; If `org-tj-keep-project-as-task' is
-                ;; non-nil, there is only one task.  Otherwise, every
-                ;; direct children of PROJECT is a top level task.
-                (if org-tj-keep-project-as-task (list project)
-                  (or (org-element-map (org-element-contents project) 'headline
-                        'identity info nil 'headline)
-                      (error "No task specified"))))
-               (task-ids (org-tj-assign-task-ids main-tasks info)))
-          ;; If no resource is allocated among tasks, allocate one to
-          ;; the first task.
-          (unless (org-element-map main-tasks 'headline
-                    (lambda (task) (org-element-property :ALLOCATE task))
-                    nil t)
-            (org-element-put-property
-             (car main-tasks) :ALLOCATE
-             (or (org-tj-get-id (car main-resources) resource-ids)
-                 (user-login-name))))
-          (mapconcat
-           (lambda (task) (org-tj--build-task task info task-ids))
-           main-tasks ""))
-        ;; 6. Insert reports.  If no report is defined, insert default
-        ;;    reports.
-        (let ((main-reports
-               ;; Collect contents from various trees marked with
-               ;; `org-tj-report-tag'.  Only gather top level
-               ;; reports.
-               (apply 'append
-                      (org-element-map tree 'headline
-                        (lambda (hl)
-                          (and (member org-tj-report-tag
-                                       (org-export-get-tags hl info))
-                               (org-element-map (org-element-contents hl)
-                                   'headline 'identity info nil 'headline)))
-                        info nil 'headline))))
-          (if main-reports
-              (mapconcat
-               (lambda (report) (org-tj--build-report report info))
-               main-reports "")
-            ;; insert title in default reports
-            (let* ((title (org-export-data (plist-get info :title) info))
-                   (report-title (if (string= title "")
-                                     (org-tj-get-name project)
-                                   title)))
-              (mapconcat
-               'org-element-normalize-string
-               (mapcar
-                (function
-                 (lambda (report)
-                   (replace-regexp-in-string "%title" report-title  report t t)))
-                org-tj-default-reports) "")))))))))
+     (if main-resources
+         (mapconcat
+          (lambda (resource) (org-tj--build-resource resource info resource-ids))
+          main-resources "")
+       (format "resource %s \"%s\" {\n}\n" (user-login-name) user-full-name))
+     ;; 5. Insert tasks.
+     (let* ((main-tasks
+             ;; If `org-tj-keep-project-as-task' is
+             ;; non-nil, there is only one task.  Otherwise, every
+             ;; direct children of PROJECT is a top level task.
+             (if org-tj-keep-project-as-task (list project)
+               (or (org-element-map (org-element-contents project) 'headline
+                     'identity info nil 'headline)
+                   (error "No task specified"))))
+            (task-ids (org-tj-assign-task-ids main-tasks info)))
+       ;; If no resource is allocated among tasks, allocate one to
+       ;; the first task.
+       (unless (org-element-map main-tasks 'headline
+                 (lambda (task) (org-element-property :ALLOCATE task))
+                 nil t)
+         (org-element-put-property
+          (car main-tasks) :ALLOCATE
+          (or (org-tj-get-id (car main-resources) resource-ids)
+              (user-login-name))))
+       (mapconcat
+        (lambda (task) (org-tj--build-task task info task-ids tree))
+        main-tasks ""))
+     ;; 6. Insert reports.  If no report is defined, insert default
+     ;;    reports.
+     (if main-reports
+         (mapconcat
+          (lambda (report) (org-tj--build-report report info))
+          main-reports "")
+       ;; insert title in default reports
+       (let* ((title (org-export-data (plist-get info :title) info))
+              (report-title (if (string= title "")
+                                (org-tj-get-name project)
+                              title)))
+         (mapconcat
+          'org-element-normalize-string
+          (--map
+           (replace-regexp-in-string "%title" report-title it t t)
+           org-tj-default-reports) ""))))))
 
 (defun org-tj--build-project (project info)
   "Return a project declaration.
@@ -644,7 +635,7 @@ date is specified, end `org-tj-default-project-duration'
 days from now."
   (let* ((first-line
           (format "project %s \"%s\" \"%s\" %s %s {\n"
-                  (org-tj--get-project-id project info)
+                  (org-tj--get-project-id project)
                   (org-tj-get-name project)
                   ;; Version is obtained through :TASKJUGGLER_VERSION:
                   ;; property or `org-tj-default-project-version'.
@@ -742,7 +733,7 @@ channel."
    ;; Closing report.
    "}\n"))
 
-(defun org-tj--build-task (task info task-ids)
+(defun org-tj--build-task (task info task-ids tree)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -756,7 +747,7 @@ a unique id will be associated to it."
          (complete
           (if (eq (org-element-property :todo-type task) 'done) "100"
             (org-element-property :COMPLETE task)))
-         (depends (org-tj-resolve-dependencies task info))
+         (depends (org-tj-resolve-dependencies task info tree))
          (effort (let ((property
                         (intern (concat ":" (upcase org-effort-property)))))
                    (org-element-property property task)))
@@ -812,7 +803,7 @@ a unique id will be associated to it."
         (s-join "" (-non-nil (list orig-attributes start end)))))
      ;; Add inner tasks.
      (->> (org-tj--subheadlines task)
-          (--map (org-tj--build-task it info task-ids))
+          (--map (org-tj--build-task it info task-ids tree))
           (apply #'concat)
           org-tj--indent-string)
      ;; Closing task.
@@ -1001,27 +992,24 @@ none."
 	  (setq errors (concat errors " " (match-string 1))))
 	(and (org-string-nw-p errors) (org-trim errors))))))
 
+;; (defmacro org-tj--with-advice (adlist &rest body)
+;;   "Execute BODY with temporary advice in ADLIST.
 
-(provide 'ox-taskjuggler)
-
-(defmacro org-tj--with-advice (adlist &rest body)
-  "Execute BODY with temporary advice in ADLIST.
-
-Each element of ADLIST should be a list of the form
-  (SYMBOL WHERE FUNCTION [PROPS])
-suitable for passing to `advice-add'.  The BODY is wrapped in an
-`unwind-protect' form, so the advice will be removed even in the
-event of an error or nonlocal exit."
-  (declare (debug ((&rest (&rest form)) body))
-           (indent 1))
-  `(progn
-     ,@(mapcar (lambda (adform)
-                 (cons 'advice-add adform))
-               adlist)
-     (unwind-protect (progn ,@body)
-       ,@(mapcar (lambda (adform)
-                   `(advice-remove ,(car adform) ,(nth 2 adform)))
-                 adlist))))
+;; Each element of ADLIST should be a list of the form
+;;   (SYMBOL WHERE FUNCTION [PROPS])
+;; suitable for passing to `advice-add'.  The BODY is wrapped in an
+;; `unwind-protect' form, so the advice will be removed even in the
+;; event of an error or nonlocal exit."
+;;   (declare (debug ((&rest (&rest form)) body))
+;;            (indent 1))
+;;   `(progn
+;;      ,@(mapcar (lambda (adform)
+;;                  (cons 'advice-add adform))
+;;                adlist)
+;;      (unwind-protect (progn ,@body)
+;;        ,@(mapcar (lambda (adform)
+;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
+;;                  adlist))))
 
 (defun org-tj--cmd (type &rest args)
   "Return formatted shell command string for TYPE.
@@ -1096,7 +1084,7 @@ ARGS are strings appended to the end of the command."
 ;;          (--map (format "%s %s\n" (car it) (cdr it)) it)
 ;;          (string-join it))))
 
-(defun org-tj--get-project-id (project info)
+(defun org-tj--get-project-id (project)
   "Get the project id from PROJECT.
 The id is just the 'TASK_ID' org property with 'prj_' appended.
 INFO is a communication channel and is ignored"
@@ -1198,17 +1186,17 @@ INFO is a communication channel and is ignored"
              hl)))
        (org-element-map it 'headline #'identity)))
 
-(defun org-tj--get-resource-headlines ()
+(defun org-tj--get-resource-headlines (tree)
   "Return list of all org taskjuggler resource headlines."
-  (--> (org-element-parse-buffer)
-       (org-element-contents it)
-       ;; only look at top-level resource trees because this is
-       ;; what the parser looks at
-       (--filter (member org-tj-resource-tag
-                         (org-element-property :tags it))
-                 
-                 it)
-       (org-element-map it 'headline #'identity)))
+  (--> (or tree (org-element-parse-buffer))
+       (org-element-map it 'headline
+         (lambda (hl)
+           (when (member org-tj-resource-tag
+                         (org-element-property :tags hl))
+             hl))
+         nil t)
+       (org-element-map it 'headline #'identity)
+       (--filter (org-element-property :RESOURCE_ID it) it)))
 
 (defun org-tj--get-task-ids (&optional headlines)
   "Return a list of all ID's for tasks in TJ projects.
@@ -1404,7 +1392,7 @@ Will automatically create an ID to dependency if it does not exist."
   (->> columns (--map (symbol-name it)) (s-join ", ")))
 
 (defun org-tj--report-parse-string-attribute (val)
-  "val is a symbol."
+  "Val is a symbol."
   (->> val symbol-name (format "\"%s\"")))
 
 (defun org-tj--report-attributes-int (val)
