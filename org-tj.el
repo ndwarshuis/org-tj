@@ -387,11 +387,11 @@ If there is no headline at all, return nil."
 	  info t)
 	(org-element-map tree 'headline 'identity info t))))
 
-(defun org-tj-get-id (item info)
+(defun org-tj-get-id (item ids)
   "Return id for task or resource ITEM.
 ITEM is a headline.  INFO is a plist used as a communication
 channel.  Return value is a string."
-  (cdr (assq item (plist-get info :taskjuggler-unique-ids))))
+  (cdr (assq item ids)))
 
 (defun org-tj-get-name (item)
   "Return name for task or resource ITEM.
@@ -494,8 +494,7 @@ channel."
                 (lambda (task)
                   (let ((task-id (or (org-element-property :TASK_ID task)
 				     (org-element-property :ID task))))
-                    (and task-id (member task-id deps-ids) task)))
-                info)))
+                    (and task-id (member task-id deps-ids) task))))))
       ;; Check BLOCKER and DEPENDS properties.  If "previous-sibling"
       ;; belongs to DEPS-ID, add it to DEPENDS.
       (when (and (member-ignore-case "previous-sibling" deps-ids)
@@ -511,7 +510,7 @@ channel."
     ;; Return dependencies.
     depends))
 
-(defun org-tj-format-dependencies (dependencies task info)
+(defun org-tj-format-dependencies (dependencies task info task-ids)
   "Format DEPENDENCIES to match TaskJuggler syntax.
 DEPENDENCIES is list of dependencies for TASK, as returned by
 `org-tj-resolve-depedencies'.  TASK is a headline.
@@ -539,7 +538,7 @@ doesn't include leading \"depends\"."
 		(setq parent (org-export-get-parent parent)))
 	      ;; Build path from DEP to PARENT.
 	      (while (not (eq parent dep))
-		(push (org-tj-get-id dep info) path)
+		(push (org-tj-get-id dep task-ids) path)
 		(setq dep (org-export-get-parent dep)))
 	      ;; Return full path.  Add dependency options, if any.
 	      (concat (make-string exclamations ?!)
@@ -556,6 +555,7 @@ doesn't include leading \"depends\"."
 CONTENTS is ignored.  INFO is a plist holding export options.
 Return complete project plan as a string in TaskJuggler syntax."
   (let* ((tree (plist-get info :parse-tree))
+         
          (project (or (org-tj-get-project info)
                       (error "No project specified"))))
     (concat
@@ -567,57 +567,60 @@ Return complete project plan as a string in TaskJuggler syntax."
      (org-element-normalize-string org-tj-default-global-properties)
      ;; 4. Insert resources.  Provide a default one if none is
      ;;    specified.
-     (let ((main-resources
-            ;; Collect contents from various trees marked with
-            ;; `org-tj-resource-tag'.  Only gather top level
-            ;; resources.
-            (apply 'append
-                   (org-element-map tree 'headline
-                     (lambda (hl)
-                       (and (member org-tj-resource-tag
-                                    (org-export-get-tags hl info))
-                            (org-element-map (org-element-contents hl) 'headline
-                              'identity info nil 'headline)))
-                     info nil 'headline))))
+     (let* ((main-resources
+             ;; Collect contents from various trees marked with
+             ;; `org-tj-resource-tag'.  Only gather top level
+             ;; resources.
+             (apply 'append
+                    (org-element-map tree 'headline
+                      (lambda (hl)
+                        (and (member org-tj-resource-tag
+                                     (org-export-get-tags hl info))
+                             (org-element-map (org-element-contents hl) 'headline
+                               'identity info nil 'headline)))
+                      info nil 'headline)))
+            (resource-ids (org-tj-assign-resource-ids
+                           main-resources info)))
        ;; Assign a unique ID to each resource.  Store it under
        ;; `:taskjuggler-unique-ids' property in INFO.
-       (setq info
-             (plist-put info :taskjuggler-unique-ids
-                        (org-tj-assign-resource-ids
-                         main-resources info)))
+       ;; (setq info
+       ;;       (plist-put info :taskjuggler-unique-ids
+       ;;                  (org-tj-assign-resource-ids
+       ;;                   main-resources info)))
        (concat
         (if main-resources
             (mapconcat
-             (lambda (resource) (org-tj--build-resource resource info))
+             (lambda (resource) (org-tj--build-resource resource info resource-ids))
              main-resources "")
           (format "resource %s \"%s\" {\n}\n" (user-login-name) user-full-name))
         ;; 5. Insert tasks.
-        (let ((main-tasks
-               ;; If `org-tj-keep-project-as-task' is
-               ;; non-nil, there is only one task.  Otherwise, every
-               ;; direct children of PROJECT is a top level task.
-               (if org-tj-keep-project-as-task (list project)
-                 (or (org-element-map (org-element-contents project) 'headline
-                       'identity info nil 'headline)
-                     (error "No task specified")))))
+        (let* ((main-tasks
+                ;; If `org-tj-keep-project-as-task' is
+                ;; non-nil, there is only one task.  Otherwise, every
+                ;; direct children of PROJECT is a top level task.
+                (if org-tj-keep-project-as-task (list project)
+                  (or (org-element-map (org-element-contents project) 'headline
+                        'identity info nil 'headline)
+                      (error "No task specified"))))
+               (task-ids (org-tj-assign-task-ids main-tasks info)))
           ;; Assign a unique ID to each task.  Add it to
           ;; `:taskjuggler-unique-ids' property in INFO.
-          (setq info
-                (plist-put info :taskjuggler-unique-ids
-                           (append
-                            (org-tj-assign-task-ids main-tasks info)
-                            (plist-get info :taskjuggler-unique-ids))))
+          ;; (setq info
+          ;;       (plist-put info :taskjuggler-unique-ids
+          ;;                  (append
+          ;;                   (org-tj-assign-task-ids main-tasks info)
+          ;;                   (plist-get info :taskjuggler-unique-ids))))
           ;; If no resource is allocated among tasks, allocate one to
           ;; the first task.
           (unless (org-element-map main-tasks 'headline
                     (lambda (task) (org-element-property :ALLOCATE task))
-                    info t)
+                    nil t)
             (org-element-put-property
              (car main-tasks) :ALLOCATE
-             (or (org-tj-get-id (car main-resources) info)
+             (or (org-tj-get-id (car main-resources) resource-ids)
                  (user-login-name))))
           (mapconcat
-           (lambda (task) (org-tj--build-task task info))
+           (lambda (task) (org-tj--build-task task info task-ids))
            main-tasks ""))
         ;; 6. Insert reports.  If no report is defined, insert default
         ;;    reports.
@@ -637,18 +640,18 @@ Return complete project plan as a string in TaskJuggler syntax."
               (mapconcat
                (lambda (report) (org-tj--build-report report info))
                main-reports "")
-	    ;; insert title in default reports
-	    (let* ((title (org-export-data (plist-get info :title) info))
-		   (report-title (if (string= title "")
-				     (org-tj-get-name project)
-				   title)))
-	      (mapconcat
-	       'org-element-normalize-string
-	       (mapcar
-		(function
-		 (lambda (report)
-		   (replace-regexp-in-string "%title" report-title  report t t)))
-		org-tj-default-reports) "")))))))))
+            ;; insert title in default reports
+            (let* ((title (org-export-data (plist-get info :title) info))
+                   (report-title (if (string= title "")
+                                     (org-tj-get-name project)
+                                   title)))
+              (mapconcat
+               'org-element-normalize-string
+               (mapcar
+                (function
+                 (lambda (report)
+                   (replace-regexp-in-string "%title" report-title  report t t)))
+                org-tj-default-reports) "")))))))))
 
 (defun org-tj--build-project (project info)
   "Return a project declaration.
@@ -686,7 +689,7 @@ days from now."
     ;; Closing project.
     (concat first-line attrs "}\n")))
 
-(defun org-tj--build-resource (resource info)
+(defun org-tj--build-resource (resource info resource-ids)
   "Return a resource declaration.
 
 RESOURCE is a headline.  INFO is a plist used as a communication
@@ -702,7 +705,7 @@ neither is defined a unique id will be associated to it."
            (org-tj--clean-id
             (or (org-element-property :RESOURCE_ID resource)
                 (org-element-property :ID resource)
-                (org-tj-get-id resource info)))
+                (org-tj-get-id resource resource-ids)))
            (org-tj-get-name resource))
    ;; Add attributes.
    (org-tj--indent-string
@@ -713,8 +716,8 @@ neither is defined a unique id will be associated to it."
     (mapconcat
      'identity
      (org-element-map (org-element-contents resource) 'headline
-       (lambda (hl) (org-tj--build-resource hl info))
-       info nil 'headline)
+       (lambda (hl) (org-tj--build-resource hl info resource-ids))
+       nil nil 'headline)
      ""))
    ;; Closing resource.
    "}\n"))
@@ -743,7 +746,7 @@ channel."
    ;; Closing report.
    "}\n"))
 
-(defun org-tj--build-task (task info)
+(defun org-tj--build-task (task info task-ids)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -764,7 +767,7 @@ a unique id will be associated to it."
          (milestone
           (or (org-element-property :MILESTONE task)
               (not (or (org-element-map (org-element-contents task) 'headline
-                         'identity info t)  ; Has task any child?
+                         'identity nil t)  ; Has task any child?
                        effort
                        (org-element-property :LENGTH task)
                        (org-element-property :DURATION task)
@@ -779,12 +782,12 @@ a unique id will be associated to it."
     (concat
      ;; Opening task.
      (format "task %s \"%s\" {\n"
-             (org-tj-get-id task info)
+             (org-tj-get-id task task-ids)
              (org-tj-get-name task))
      ;; Add default attributes.
      (and depends
           (format "  depends %s\n"
-                  (org-tj-format-dependencies depends task info)))
+                  (org-tj-format-dependencies depends task info task-ids)))
      (and allocate
           (format "  purge %s\n  allocate %s\n"
                   ;; Compatibility for previous TaskJuggler versions.
@@ -815,8 +818,8 @@ a unique id will be associated to it."
       (org-tj--indent-string
        (mapconcat 'identity
                   (org-element-map (org-element-contents task) 'headline
-                    (lambda (hl) (org-tj--build-task hl info))
-                    info nil 'headline)
+                    (lambda (hl) (org-tj--build-task hl info task-ids))
+                    nil nil 'headline)
                   ""))
       ;; Closing task.
       "}\n")))
