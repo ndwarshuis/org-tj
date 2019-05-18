@@ -352,7 +352,7 @@ means they only need to be unique among the task siblings."
   ;;   (funcall build-id tasks nil)
   ;;   alist))
 
-(defun org-tj-assign-resource-ids (resources info)
+(defun org-tj-assign-resource-ids (resources)
   "Assign a unique ID to each resource within RESOURCES.
 RESOURCES is a list of headlines.  INFO is a plist used as a
 communication channel.  Return value is an alist between
@@ -362,8 +362,7 @@ headlines and their associated ID."
       (lambda (resource)
         (let ((id (org-tj--build-unique-id resource ids)))
           (push id ids)
-          (cons resource id)))
-      info)))
+          (cons resource id))))))
 
 
 ;;; Accessors
