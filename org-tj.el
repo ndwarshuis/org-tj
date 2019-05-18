@@ -367,6 +367,8 @@ headlines and their associated ID."
 
 ;;; Accessors
 
+;; TODO this shouldn't be necessary, just use the tree from the
+;; toplevel exporter
 (defun org-tj-get-project (info)
   "Return project in parse tree.
 INFO is a plist used as a communication channel.  First headline
@@ -670,6 +672,11 @@ days from now."
     ;; Closing project.
     (concat first-line attrs "}\n")))
 
+(defun org-tj--subheadlines (hl)
+  "Return subheadings under headline HL if any."
+  (let ((hl-contents (org-element-contents hl)))
+    (if (assoc 'section hl-contents) (cdr hl-contents) hl-contents)))
+
 (defun org-tj--build-resource (resource info resource-ids)
   "Return a resource declaration.
 
@@ -693,13 +700,17 @@ neither is defined a unique id will be associated to it."
     (org-tj--build-attributes
      resource org-tj-valid-resource-attributes))
    ;; Add inner resources.
-   (org-tj--indent-string
-    (mapconcat
-     'identity
-     (org-element-map (org-element-contents resource) 'headline
-       (lambda (hl) (org-tj--build-resource hl info resource-ids))
-       nil nil 'headline)
-     ""))
+   (->> (org-tj--subheadlines resource)
+        (--map (org-tj--build-resource it info resource-ids))
+        (apply #'concat)
+        org-tj--indent-string)
+   ;; (org-tj--indent-string
+   ;;  (mapconcat
+   ;;   'identity
+   ;;   (org-element-map (org-element-contents resource) 'headline
+   ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
+   ;;     nil nil 'headline)
+   ;;   ""))
    ;; Closing resource.
    "}\n"))
 
@@ -717,13 +728,17 @@ channel."
     (org-tj--build-attributes
      report org-tj-valid-report-attributes))
    ;; Add inner reports.
-   (org-tj--indent-string
-    (mapconcat
-     'identity
-     (org-element-map (org-element-contents report) 'headline
-       (lambda (hl) (org-tj--build-report hl info))
-       info nil 'headline)
-     ""))
+   (->> (org-tj--subheadlines report)
+        (--map (org-tj--build-report it info))
+        (apply #'concat)
+        org-tj--indent-string)
+   ;; (org-tj--indent-string
+   ;;  (mapconcat
+   ;;   'identity
+   ;;   (org-element-map (org-element-contents report) 'headline
+   ;;     (lambda (hl) (org-tj--build-report hl info))
+   ;;     info nil 'headline)
+     ;; ""))
    ;; Closing report.
    "}\n"))
 
@@ -795,15 +810,13 @@ a unique id will be associated to it."
                    (org-tj-get-end task)
                    (format "end %s\n"))))
         (s-join "" (-non-nil (list orig-attributes start end)))))
-      ;; Add inner tasks.
-      (org-tj--indent-string
-       (mapconcat 'identity
-                  (org-element-map (org-element-contents task) 'headline
-                    (lambda (hl) (org-tj--build-task hl info task-ids))
-                    nil nil 'headline)
-                  ""))
-      ;; Closing task.
-      "}\n")))
+     ;; Add inner tasks.
+     (->> (org-tj--subheadlines task)
+          (--map (org-tj--build-task it info task-ids))
+          (apply #'concat)
+          org-tj--indent-string)
+     ;; Closing task.
+     "}\n")))
 
 
 ;;; Interactive Functions
