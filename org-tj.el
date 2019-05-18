@@ -1460,6 +1460,10 @@ Will automatically create an ID to dependency if it does not exist."
        ;; TODO do I care about indenting prettily?
        (format "taskreport %s %s {\n%s\n}" name id)))
 
+(defun org-tj-show-depends ()
+  (interactive)
+  (org-columns nil "%25ITEM %TASK_ID %DEPENDS"))
+
 ;; (advice-add #'org-tj--build-project :around
 ;;             #'org-tj--add-project-attributes)
 ;; (advice-add #'org-tj-export-process-and-open :around
