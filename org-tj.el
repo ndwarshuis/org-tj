@@ -584,10 +584,11 @@ Return complete project plan as a string in TaskJuggler syntax."
      ;; 4. Insert resources.  Provide a default one if none is
      ;;    specified.
      (if main-resources
-         (mapconcat
-          (lambda (resource) (org-tj--build-resource resource info resource-ids))
-          main-resources "")
-       (format "resource %s \"%s\" {\n}\n" (user-login-name) user-full-name))
+         (->> main-resources
+              (--map (org-tj--build-resource it info resource-ids))
+              (apply #'concat))
+       (format "resource %s \"%s\" {\n}\n" (user-login-name)
+               user-full-name))
      ;; 5. Insert tasks.
      (let* ((main-tasks
              ;; If `org-tj-keep-project-as-task' is
