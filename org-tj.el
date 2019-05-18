@@ -312,11 +312,7 @@ This hook is run with the name of the file as argument.")
 	(?o "As TJP file, process and open"
 	    (lambda (a s v b)
 	      (if a (org-tj-export a s v)
-		(org-tj-export-process-and-open s v))))))
-  ;; TODO this seems silly to me...
-  ;; This property will be used to store unique ids in communication
-  ;; channel.  Ids will be retrieved with `org-tj-get-id'.
-  :options-alist '((:taskjuggler-unique-ids nil nil nil)))
+		(org-tj-export-process-and-open s v)))))))
 
 
 ;;; Unique IDs
@@ -579,14 +575,7 @@ Return complete project plan as a string in TaskJuggler syntax."
                              (org-element-map (org-element-contents hl) 'headline
                                'identity info nil 'headline)))
                       info nil 'headline)))
-            (resource-ids (org-tj-assign-resource-ids
-                           main-resources info)))
-       ;; Assign a unique ID to each resource.  Store it under
-       ;; `:taskjuggler-unique-ids' property in INFO.
-       ;; (setq info
-       ;;       (plist-put info :taskjuggler-unique-ids
-       ;;                  (org-tj-assign-resource-ids
-       ;;                   main-resources info)))
+            (resource-ids (org-tj-assign-resource-ids main-resources)))
        (concat
         (if main-resources
             (mapconcat
@@ -603,13 +592,6 @@ Return complete project plan as a string in TaskJuggler syntax."
                         'identity info nil 'headline)
                       (error "No task specified"))))
                (task-ids (org-tj-assign-task-ids main-tasks info)))
-          ;; Assign a unique ID to each task.  Add it to
-          ;; `:taskjuggler-unique-ids' property in INFO.
-          ;; (setq info
-          ;;       (plist-put info :taskjuggler-unique-ids
-          ;;                  (append
-          ;;                   (org-tj-assign-task-ids main-tasks info)
-          ;;                   (plist-get info :taskjuggler-unique-ids))))
           ;; If no resource is allocated among tasks, allocate one to
           ;; the first task.
           (unless (org-element-map main-tasks 'headline
