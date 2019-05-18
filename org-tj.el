@@ -100,18 +100,6 @@ the project."
   :group 'org-export-taskjuggler
   :type 'string)
 
-(defcustom org-tj-target-version 3.0
-  "Which version of TaskJuggler the exporter is targeting.
-By default a project plan is exported which conforms to version
-3.x of TaskJuggler.  For a project plan that is compatible with
-versions of TaskJuggler older than 3.0 set this to 2.4.
-
-If you change this variable be sure to also change
-`org-tj-default-reports' as the format of reports has
-changed considerably between version 2.x and 3.x of TaskJuggler"
-  :group 'org-export-taskjuggler
-  :type 'number)
-
 (defcustom org-tj-default-project-version "1.0"
   "Default version string for the project.
 This value can also be set with the \":VERSION:\" property
@@ -168,27 +156,7 @@ If you want to define your own reports you can change them here
 or simply define the default reports so that they include an
 external report definition as follows:
 
-include reports.tji
-
-These default are made to work with tj3.  If you are targeting
-TaskJuggler 2.4 (see `org-tj-target-version') please
-change these defaults to something like the following:
-
-taskreport \"Gantt Chart\" {
-  headline \"Project Gantt Chart\"
-  columns hierarchindex, name, start, end, effort, duration, completed, chart
-  timeformat \"%Y-%m-%d\"
-  hideresource 1
-  loadunit shortauto
-}
-
-resourcereport \"Resource Graph\" {
-  headline \"Resource Allocation Graph\"
-  columns no, name, utilization, freeload, chart
-  loadunit shortauto
-  sorttasks startup
-  hidetask ~isleaf()
-}"
+include reports.tji"
   :group 'org-export-taskjuggler
   :type '(repeat (string :tag "Report")))
 
@@ -264,10 +232,7 @@ exported with the corresponding report."
 The command will be given to the shell as a command to process a
 Taskjuggler file.  \"%f\" in the command will be replaced by the
 full file name, \"%o\" by the reports directory (see
-`org-tj-reports-directory').
-
-If you are targeting Taskjuggler 2.4 (see
-`org-tj-target-version') this setting is ignored."
+`org-tj-reports-directory')."
   :group 'org-export-taskjuggler)
 
 (defcustom org-tj-reports-directory "reports"
@@ -277,10 +242,7 @@ reports and associated files such as CSS inside this directory.
 
 If the directory is not an absolute path it is relative to the
 directory of the exported file.  The directory is created if it
-doesn't exist.
-
-If you are targeting Taskjuggler 2.4 (see
-`org-tj-target-version') this setting is ignored."
+doesn't exist."
   :group 'org-export-taskjuggler)
 
 (defcustom org-tj-keep-project-as-task t
@@ -777,11 +739,7 @@ a unique id will be associated to it."
           (format "  depends %s\n"
                   (org-tj-format-dependencies depends task info task-ids)))
      (and allocate
-          (format "  purge %s\n  allocate %s\n"
-                  ;; Compatibility for previous TaskJuggler versions.
-                  (if (>= org-tj-target-version 3.0) "allocate"
-                    "allocations")
-                  allocate))
+          (format "  purge allocate\n  allocate %s\n" allocate))
      (and complete (format "  complete %s\n" complete))
      (and effort
           (format "  effort %s\n"
@@ -898,19 +856,8 @@ Return a list of reports."
 
 Export and process the file using
 `org-tj-export-and-process' and open the generated
-reports with a browser.
-
-If you are targeting TaskJuggler 2.4 (see
-`org-tj-target-version') the processing and display of
-the reports is done using the TaskJuggler GUI."
+reports with a browser."
   (interactive)
-  ;; TODO remove tj2 codepath
-  ;; (if (< org-tj-target-version 3.0)
-  ;;     (let* ((process-name "TaskJugglerUI")
-  ;;            (command
-  ;;             (concat process-name " "
-  ;;                     (org-tj-export nil subtreep visible-only))))
-  ;;       (start-process-shell-command process-name nil command))
   (let ((reports (org-tj-export-and-process subtreep visible-only)))
     (print reports)
     (dolist (report reports)
