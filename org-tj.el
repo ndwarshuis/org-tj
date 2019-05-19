@@ -33,6 +33,7 @@
 ;; code goes here
 
 (require 's)
+(require 'f)
 (require 'dash)
 (require 'org-element)
 (require 'subr-x)
@@ -64,6 +65,8 @@ default and :TASK_ID: will be used instead."
   :group 'org-tj3
   :type 'string)
 
+;; TODO need a way to validate attributes? see the project manual
+;; page for what is allowed
 (defcustom org-tj-default-attributes
   '(("timingresolution" . "5 min"))
   "Default project attributes."
@@ -329,12 +332,13 @@ headlines and their associated ID."
 
 ;;; Accessors
 
-;; TODO this shouldn't be necessary, just use the tree from the
-;; toplevel exporter
 (defun org-tj-get-project (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
+  ;; TODO this is named poorly, really this is getting project metadata
+  ;; for the tj element named "project" ...it is not actually the
+  ;; project tasks
   (org-element-map tree 'headline
     (lambda (hl)
       (and (member org-tj-project-tag (org-element-property :tags hl)) hl))))
@@ -381,10 +385,12 @@ ITEM is a project, task, resource or report headline.  ATTRIBUTES
 is a list of symbols representing valid attributes for ITEM."
   (mapconcat
    (lambda (attribute)
-     (let ((value (org-element-property
-                   (intern (upcase (format ":%s" attribute)))
-                   item)))
-       (and value (format "%s %s\n" attribute value))))
+     (-when-let (value (--> attribute
+                            (format ":%s" it)
+                            (upcase it)
+                            (intern it)
+                            (org-element-property it item)))
+       (format "%s %s\n" attribute value)))
    (remq nil attributes) ""))
 
 (defun org-tj--build-unique-id (item unique-ids)
@@ -417,6 +423,44 @@ ID is a string."
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
+(defun org-tj--file-tj3-keywords (tree)
+  "Return toplevel taskjuggler file keywords from buffer parse TREE."
+  (-when-let (kws
+              (->> tree
+                   org-element-contents
+                   (assoc 'section)
+                   org-element-contents
+                   (--filter (and (eq 'keyword (org-element-type it))
+                                  (-> (org-element-property :key it)
+                                      (substring 0 4)
+                                      (equal "TJ3_"))))
+                   (--group-by (org-element-property :key it))
+                   (--map (cons
+                           (-> (car it)
+                               (substring 4)
+                               downcase
+                               intern) ; intern here to make eq work
+                           (--map (org-element-property :value it)
+                                  (cdr it))))))
+    (let ((split-attrs
+           (->> (alist-get 'attribute kws)
+                ;; TODO validate the attributes
+                (--map (let ((a (s-split-up-to " " it 1)))
+                         (cons (-> (car a) downcase intern)
+                               (car (cdr a))))))))
+      (--map (let ((kw (car it))
+                   (val (cdr it)))
+               (cons kw
+                     (cond
+                      ;; if there are any repeats in these keep the
+                      ;; first value only
+                      ((memq kw '(name version id start end))
+                       (car val))
+                      ;; replace the attributes with the split version
+                      ((eq kw 'attribute)
+                       split-attrs)
+                      (t (error "Unknown taskjuggler keyword: %s" kw)))))
+             kws))))
 
 ;;; Dependencies
 
@@ -540,7 +584,7 @@ Return complete project plan as a string in TaskJuggler syntax."
      ;; 1. Insert header.
      (org-element-normalize-string org-tj-default-global-header)
      ;; 2. Insert project.
-     (org-tj--build-project project info)
+     (org-tj--build-project project info tree)
      ;; 3. Insert global properties.
      (org-element-normalize-string org-tj-default-global-properties)
      ;; 4. Insert resources.  Provide a default one if none is
@@ -590,31 +634,35 @@ Return complete project plan as a string in TaskJuggler syntax."
            (replace-regexp-in-string "%title" report-title it t t)
            org-tj-default-reports) ""))))))
 
-(defun org-tj--build-project (project info)
+(defun org-tj--build-project (project info tree)
   "Return a project declaration.
 PROJECT is a headline.  INFO is a plist used as a communication
 channel.  If no start date is specified, start today.  If no end
 date is specified, end `org-tj-default-project-duration'
 days from now."
-  (let* ((first-line
+  (let* ((kws (org-tj--file-tj3-keywords tree))
+         (first-line
           (format "project %s \"%s\" \"%s\" %s %s {\n"
-                  (org-tj--get-project-id project)
-                  (org-tj-get-name project)
+                  (or (alist-get 'id kws)
+                      (--> (plist-get info :input-buffer)
+                           (f-no-ext it)
+                           ;; TODO this is likely incomplete
+                           (s-replace "-" "_" it)))
+                  ;; TODO make up some name if none given
+                  (alist-get 'name kws)
                   ;; Version is obtained through :TASKJUGGLER_VERSION:
                   ;; property or `org-tj-default-project-version'.
-                  (or (org-element-property :VERSION project)
+                  (or (alist-get 'version kws)
                       org-tj-default-project-version)
-                  (or (org-tj-get-start project)
+                  ;; TODO make these take org timestamps
+                  (or (alist-get 'start kws)
+                      (org-tj-get-start project)
                       (format-time-string "%Y-%m-%d"))
-                  (let ((end (org-tj-get-end project)))
-                    (or (and end (format "- %s" end))
-                        (format "+%sd"
-                                org-tj-default-project-duration)))))
-         (orig-attrs (--> (org-tj--build-attributes
-                           project org-tj-valid-project-attributes)
-                          (s-split "\n" it t)
-                          (--map (s-split-up-to " " it 1 t) it)
-                          (--map (cons (car it) (cadr it)) it)))
+                  (or (alist-get 'end kws)
+                      (-some->> (org-tj-get-end project)
+                                (format "- %s" end))
+                      (format "+%sd" org-tj-default-project-duration))))
+         (orig-attrs (alist-get 'attribute kws))
          (add-attrs
           (--> org-tj-default-attributes
                (--remove (assoc-string (car it) orig-attrs) it)))
