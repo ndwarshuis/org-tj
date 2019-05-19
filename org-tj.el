@@ -82,24 +82,32 @@ default and :TASK_ID: will be used instead."
   :group 'org-export-taskjuggler
   :type 'string)
 
-(defcustom org-tj-project-tag "taskjuggler_project"
+(defcustom org-tj-project-tag "tj3_project"
   "Tag marking project's tasks.
 This tag is used to find the tree containing all the tasks for
 the project."
   :group 'org-export-taskjuggler
   :type 'string)
 
-(defcustom org-tj-resource-tag "taskjuggler_resource"
+(defcustom org-tj-resource-tag "tj3_resource"
   "Tag marking project's resources.
 This tag is used to find the tree containing all the resources
 for the project."
   :group 'org-export-taskjuggler
   :type 'string)
 
-(defcustom org-tj-report-tag "taskjuggler_report"
+(defcustom org-tj-report-tag "tj3_report"
   "Tag marking project's reports.
 This tag is used to find the tree containing all the reports for
 the project."
+  :group 'org-export-taskjuggler
+  :type 'string)
+
+(defcustom org-tj-ignore-tag "tj3_ignore"
+  "Tag marking tasks to be ignored when exporting.
+Anything children under a marked subtree header is also ignore.
+This tag has no effect when applied to the toplevel headline of
+subtrees marked with `org-tj-project-tag'."
   :group 'org-export-taskjuggler
   :type 'string)
 
@@ -290,6 +298,9 @@ headlines and their associated ID.  IDs are hierarchical, which
 means they only need to be unique among the task siblings."
   ;; TODO this makes all ids globally unique, not bad but might be
   ;; a reason the original didn't do it seeing as this is way easier?
+  ;; TODO anything with an ignore tag is not taken into account here
+  ;; not a huge deal but will make the id's neater in the case of
+  ;; collisions with ignored ids
   (let* ((hls (->> tasks
                    (--map (org-element-map it 'headline #'identity))
                    (apply #'append)))
@@ -811,6 +822,8 @@ a unique id will be associated to it."
         (s-join "" (-non-nil (list orig-attributes start end)))))
      ;; Add inner tasks.
      (->> (org-tj--subheadlines task)
+          ;; skip over any inner tasks that have an ignore tag
+          (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
           (--map (org-tj--build-task it info task-ids tree))
           (apply #'concat)
           org-tj--indent-string)
