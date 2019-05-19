@@ -293,29 +293,29 @@ means they only need to be unique among the task siblings."
   (let* ((hls (->> tasks
                    (--map (org-element-map it 'headline #'identity))
                    (apply #'append)))
-    (ids (->> hls
-         (-reductions-from
-          (lambda (a b)
-            (let ((unique-id (org-tj--build-unique-id b a)))
-              (append a (list unique-id))))
-          nil)
-         (-drop 1)
-         (-map #'-last-item))))
+         (ids (->> hls
+                   (-reductions-from
+                    (lambda (a b)
+                      (let ((unique-id (org-tj--build-unique-id b a)))
+                        (append a (list unique-id))))
+                    nil)
+                   (-drop 1)
+                   (-map #'-last-item))))
     (--zip-with (cons it other) hls ids)))
-  ;; this function doesn't work with lexical scoping
-  ;; (let* (alist
-  ;;    build-id			; For byte-compiler.
-  ;;        (build-id
-  ;;         (lambda (tasks local-ids)
-  ;;           (org-element-map tasks 'headline
-  ;;             (lambda (task)
-  ;;               (let ((id (org-tj--build-unique-id task local-ids)))
-  ;;                 (push id local-ids)
-  ;;                 (push (cons task id) alist)
-  ;;                 (funcall build-id (org-element-contents task) nil)))
-  ;;             info nil 'headline))))
-  ;;   (funcall build-id tasks nil)
-  ;;   alist))
+;; this function doesn't work with lexical scoping
+;; (let* (alist
+;;    build-id			; For byte-compiler.
+;;        (build-id
+;;         (lambda (tasks local-ids)
+;;           (org-element-map tasks 'headline
+;;             (lambda (task)
+;;               (let ((id (org-tj--build-unique-id task local-ids)))
+;;                 (push id local-ids)
+;;                 (push (cons task id) alist)
+;;                 (funcall build-id (org-element-contents task) nil)))
+;;             info nil 'headline))))
+;;   (funcall build-id tasks nil)
+;;   alist))
 
 (defun org-tj-assign-resource-ids (resources)
   "Assign a unique ID to each resource within RESOURCES.
@@ -579,7 +579,15 @@ Return complete project plan as a string in TaskJuggler syntax."
                            (error "No project specified"))))
          (main-resources (org-tj--get-resource-headlines tree))
          (resource-ids (org-tj-assign-resource-ids main-resources))
-         (main-reports (org-tj--get-reports tree)))
+         (main-reports (org-tj--get-reports tree))
+         (main-tasks (org-tj-get-project tree))
+          ;; If `org-tj-keep-project-as-task' is
+          ;; non-nil, there is only one task.  Otherwise, every
+          ;; direct children of PROJECT is a top level task.
+          ;; (if org-tj-keep-project-as-task (list project)
+          ;;   (or (org-tj--subheadlines project)
+          ;;       (error "No task specified"))))
+         (task-ids (org-tj-assign-task-ids main-tasks info)))
     (concat
      ;; 1. Insert header.
      (org-element-normalize-string org-tj-default-global-header)
@@ -596,27 +604,20 @@ Return complete project plan as a string in TaskJuggler syntax."
        (format "resource %s \"%s\" {\n}\n" (user-login-name)
                user-full-name))
      ;; 5. Insert tasks.
-     (let* ((main-tasks
-             ;; If `org-tj-keep-project-as-task' is
-             ;; non-nil, there is only one task.  Otherwise, every
-             ;; direct children of PROJECT is a top level task.
-             (if org-tj-keep-project-as-task (list project)
-               (or (org-element-map (org-element-contents project) 'headline
-                     'identity info nil 'headline)
-                   (error "No task specified"))))
-            (task-ids (org-tj-assign-task-ids main-tasks info)))
-       ;; If no resource is allocated among tasks, allocate one to
-       ;; the first task.
-       (unless (org-element-map main-tasks 'headline
-                 (lambda (task) (org-element-property :ALLOCATE task))
-                 nil t)
-         (org-element-put-property
-          (car main-tasks) :ALLOCATE
-          (or (org-tj-get-id (car main-resources) resource-ids)
-              (user-login-name))))
-       (mapconcat
-        (lambda (task) (org-tj--build-task task info task-ids tree))
-        main-tasks ""))
+     (->> main-tasks
+          (--map
+           (progn
+             ;; If no resource is allocated among tasks, allocate one to
+             ;; the first task.
+             (unless (org-element-map it 'headline
+                       (lambda (task) (org-element-property :ALLOCATE task))
+                       nil t)
+               ;; TODO set better default resource
+               ;; (or (org-tj-get-id (car main-resources) resource-ids)
+               (let ((top-res (user-login-name)))
+                 (-> it (org-element-put-property :ALLOCATE top-res)
+                     (org-tj--build-task info task-ids tree))))))
+          (apply #'concat))
      ;; 6. Insert reports.  If no report is defined, insert default
      ;;    reports.
      (if main-reports
@@ -907,7 +908,6 @@ Export and process the file using
 reports with a browser."
   (interactive)
   (let ((reports (org-tj-export-and-process subtreep visible-only)))
-    (print reports)
     (dolist (report reports)
       (org-tj-open-in-browser report))))
 
