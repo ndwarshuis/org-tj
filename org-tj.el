@@ -728,6 +728,172 @@ neither is defined a unique id will be associated to it."
    ;; Closing resource.
    "}\n"))
 
+(defun org-tj--src-to-rich-text (src-block)
+  "Convert org SRC-BLOCK to rich text. Return formatted string."
+  (letrec
+      ((buffer (with-temp-buffer
+                 (insert (org-element-property :value src-block))
+                 (org-element-parse-buffer)))
+       (parse-elem
+        (lambda (elem)
+          (let ((type (org-element-type elem)))
+            (cond
+             ;; flank headlines with ===
+             ((eq type 'headline) (funcall parse-hl elem))
+             ;; convert links to either local links or generators
+             ((eq type 'link) (funcall parse-link elem))
+             ;; convert items to enumerated (#) or bulleted (*) lists
+             ((eq type 'item) (funcall parse-item elem))
+             ;; convert source blocks to literal text/html
+             ((eq type 'src-block) (funcall parse-src-block elem))
+             ;; wrap verbatim text in nowiki to make literal
+             ((eq type 'verbatim) (funcall parse-verbatim elem))
+             ;; apply formatting to all textual elements
+             ((memq type '(plain-text italic bold underline
+                                      superscript subscript))
+              (funcall parse-text elem type))
+             ;; treat code, verbatim, and timestamps as literals
+             ((memq type '(code timestamp))
+              (funcall parse-value elem))
+             ;; horizontal rules are just four dashes
+             ((eq type 'horizontal-rule) "----\n")
+             ;; these are containers, just iterate through them
+             ((memq type '(section paragraph plain-list))
+              (funcall parse-contents elem))
+             ;; Ignore all other elements:
+             ;; babel-call, center-block, clock, comment,
+             ;; comment-block, diary-sexp, drawer, dynamic-block,
+             ;; entity, example-block, export-block, export-snippet,
+             ;; fixed-width, footnote-definition, footnote-reference,
+             ;; inline-babel-call, inline-src-block, inlinetask,
+             ;; keyword, latex-environment, latex-fragment, line-break
+             ;; macro, planning, property-drawer, quote-block
+             ;; radio-target, special-block,
+             ;; statistics-cookie, table, table-cell, table-row, target,
+             ;; verse-block
+             (t "")))))
+       (parse-src-block
+        (lambda (src-block)
+          (let ((src (org-element-property :value src-block)))
+            (if (equal "html" (org-element-property :language src-block))
+                (format "<html>\n%s\n</html>\n" src)
+              (replace-regexp-in-string "^ *\\S-" " \\&" src)))))
+       (parse-verbatim
+        (lambda (verbatim)
+          (->> (org-element-property :value verbatim)
+               (format "<nowiki>%s</nowiki>"))))
+       (parse-contents
+        (lambda (obj)
+          (->> (org-element-contents obj)
+               (--map (funcall parse-elem it))
+               (apply #'concat))))
+       (parse-hl
+        (lambda (hl)
+          (let ((txt (org-element-property :raw-value hl))
+                (lvl (--> (org-element-property :level hl)
+                          (if (> it 3) 3 it)
+                          (s-repeat it "="))))
+            (concat
+             (format "%s %s %s\n" lvl txt lvl)
+             (funcall parse-contents hl)))))
+       (parse-link-id
+        (lambda (link)
+          (let ((path (org-element-property :path link))
+                ;; find all siblings of this link that are not just
+                ;; whitespace
+                (non-ws-siblings
+                 (->> (org-element-property :parent link)
+                      org-element-contents
+                      (-remove-item link)
+                      (--remove
+                       (and (eq 'plain-text (org-element-type it))
+                            (equal (s-trim it) ""))))))
+            ;; use block generator when there are no siblings
+            (if (= 0 (length non-ws-siblings))
+                ;; TODO how to tell if we want a navbar?
+                (format "<[report id=%s]>" path)
+              (format "<-reportlink id=%s->" path)))))
+       (parse-link-http
+        (lambda (link)
+          (let ((raw-link (org-element-property :raw-link link))
+                (contents (org-element-contents link)))
+            (if contents
+                (format "[%s %s]" raw-link
+                        (funcall parse-text link 'link))
+              (format "[%s]" raw-link)))))
+       (parse-link-file
+        (lambda (link)
+          (let ((path (org-element-property :path link))
+                (contents (org-element-contents link)))
+            (if contents
+                (format "[[File:%s|%s]]" path
+                        (funcall parse-text link 'link))
+              (format "[[File:%s]]" path)))))
+       (parse-link
+        (lambda (link)
+          (let ((type (org-element-property :type link)))
+            (cond
+             ((equal type "custom-id") (funcall parse-link-id link))
+             ((equal type "http") (funcall parse-link-http link))
+             ((equal type "file") (funcall parse-link-file link))
+             (t type)))))
+       (parse-item
+        (lambda (item)
+          (let* ((contents (funcall parse-contents item))
+                 (begin (org-element-property :begin item))
+                 ;; TODO this assumes that the parent is always a list
+                 ;; if this is ever false we crash
+                 (bullet (--> (org-element-property :parent item)
+                              (org-element-property :type it)
+                              (if (eq it 'ordered) "#" "*")))
+                 (lvl (--> (org-element-property :structure item)
+                           (alist-get begin it)
+                           (nth 0 it)
+                           (/ it 2)
+                           (+ it 1)
+                           (s-repeat it bullet)
+                           (format "%s " it))))
+            (concat lvl contents))))
+       (parse-text
+        (lambda (text type &optional is-italic is-bolded)
+          (if (eq type 'plain-text)
+              (let ((fmt (cond
+                          ((and is-italic is-bolded) "'''''%s'''''")
+                          (is-italic "''%s''")
+                          (is-bolded "'''%s'''")
+                          (t "%s"))))
+                (->> text substring-no-properties (format fmt)))
+            (let* ((blanks (org-element-property :post-blank text))
+                   (fmt (->>
+                         (cond
+                          ((eq type 'superscript) "^%s")
+                          ((eq type 'subscript) "_{%s}")
+                          (t "%s"))
+                         (s-append (s-repeat blanks " ")))))
+              (->> (org-element-contents text)
+                   (--map (let* ((inner-type (org-element-type it))
+                                 (i (or is-italic (eq type 'italic)))
+                                 (b (or is-bolded (eq type 'bold))))
+                            (funcall parse-text it inner-type i b)))
+                   (apply #'concat)
+                   (format fmt))))))
+       (parse-value
+        (lambda (obj)
+          (or (org-element-property :value obj)
+              (org-element-property :raw-value obj))))
+       (rich-text (funcall parse-contents buffer)))
+    (if (s-contains? "\n" rich-text)
+        (format "-8<-\n%s\n->8-" rich-text)
+      (format "\"%s\"" rich-text))))
+
+(defun org-tj-create-taskreport (name id attrs)
+  "Create a task report definition."
+  (->> attrs
+       (-map #'org-tj--parse-attribute)
+       (s-join "\n")
+       ;; TODO do I care about indenting prettily?
+       (format "taskreport %s %s {\n%s\n}" name id)))
+
 (defun org-tj--build-report (report info)
   "Return a report declaration.
 REPORT is a headline.  INFO is a plist used as a communication
