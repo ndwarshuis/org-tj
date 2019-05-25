@@ -883,18 +883,64 @@ neither is defined a unique id will be associated to it."
         (lambda (obj)
           (or (org-element-property :value obj)
               (org-element-property :raw-value obj))))
-       (rich-text (funcall parse-contents buffer)))
+       (rich-text (s-trim (funcall parse-contents buffer))))
     (if (s-contains? "\n" rich-text)
         (format "-8<-\n%s\n->8-" rich-text)
       (format "\"%s\"" rich-text))))
 
-(defun org-tj-create-taskreport (name id attrs)
+(defconst org-tj--report-attributes
+  '(accountroot resourceroot taskroot auxdir rawhtmlhead timeformat
+                timezone title height width formats loadunit))
+               
+(defconst org-tj--report-attributes-id
+  '(accountroot resourceroot taskroot))
+
+(defconst org-tj--report-attributes-string
+  '(auxdir rawhtmlhead timeformat timezone title))
+
+(defconst org-tj--report-attributes-int
+  '(height width))
+
+(defconst org-tj--report-attributes-discrete
+  '(formats loadunit))
+
+(defconst org-tj--report-attributes-rich-text
+  '(caption center epilog footer header headline left prolog right))
+
+(defun org-tj-create-taskreport (hl)
   "Create a task report definition."
-  (->> attrs
-       (-map #'org-tj--parse-attribute)
-       (s-join "\n")
-       ;; TODO do I care about indenting prettily?
-       (format "taskreport %s %s {\n%s\n}" name id)))
+  ;; assume the incoming headline is indeed a valid task report
+  (let* ((name (org-element-property :raw-value hl))
+         (id (org-element-property :CUSTOM_ID hl))
+         (rich-text
+          (-some-->
+           (org-element-contents hl)
+           (assq 'section it)
+           (org-element-contents it)
+           (org-element-map it 'src-block #'identity)
+           (--filter
+            (member
+             (org-element-property :name it)
+             (-map #'symbol-name org-tj--report-attributes-rich-text))
+            it)
+           (--map (cons (make-symbol (org-element-property :name it))
+                        (org-tj--src-to-rich-text it))
+                  it)))
+         (props (->> org-tj--report-attributes
+                     (--map (cons it
+                                  (--> it
+                                       (symbol-name it)
+                                       (concat ":" it)
+                                       (upcase it)
+                                       (intern it)
+                                       (org-element-property it hl))))
+                     (--remove (not (cdr it)))))
+         (attrs (->> (append rich-text props)
+                     (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
+                     ;; (-map #'org-tj--parse-attribute)
+                     (-map #'org-tj--indent-string)
+                     (apply #'concat))))
+    (format "taskreport \"%s\" %s {\n%s}" name id attrs)))
 
 (defun org-tj--build-report (report info)
   "Return a report declaration.
@@ -1547,20 +1593,20 @@ Will automatically create an ID to dependency if it does not exist."
     :buffer "*helm taskjuggler buffer*"
     :prompt "Project ID: ")))
 
-(defconst org-tj--report-attributes-id
-  '(accountroot resourceroot taskroot))
+;; (defconst org-tj--report-attributes-id
+;;   '(accountroot resourceroot taskroot))
 
-(defconst org-tj--report-attributes-string
-  '(auxdir rawhtmlhead timeformat timezone title))
+;; (defconst org-tj--report-attributes-string
+;;   '(auxdir rawhtmlhead timeformat timezone title))
 
-(defconst org-tj--report-attributes-int
-  '(height width))
+;; (defconst org-tj--report-attributes-int
+;;   '(height width))
 
-(defconst org-tj--report-attributes-discrete
-  '(formats loadunit))
+;; (defconst org-tj--report-attributes-discrete
+;;   '(formats loadunit))
 
-(defconst org-tj--report-attributes-rich-text
-  '(caption center epilog footer header headline left prolog right))
+;; (defconst org-tj--report-attributes-rich-text
+;;   '(caption center epilog footer header headline left prolog right))
 
 ;; TODO these are just stubs for the most part
 (defun org-tj--parse-columns (columns)
@@ -1617,14 +1663,6 @@ Will automatically create an ID to dependency if it does not exist."
       (t (error "Invalid key: %s" key)))
      (format "%s %s" key))))
   
-(defun org-tj-create-taskreport (name id attrs)
-  "Create a task report definition."
-  (->> attrs
-       (-map #'org-tj--parse-attribute)
-       (s-join "\n")
-       ;; TODO do I care about indenting prettily?
-       (format "taskreport %s %s {\n%s\n}" name id)))
-
 (defun org-tj-show-depends ()
   (interactive)
   (org-columns nil "%25ITEM %TASK_ID %DEPENDS"))
