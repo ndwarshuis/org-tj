@@ -808,6 +808,8 @@ neither is defined a unique id will be associated to it."
                       (--remove
                        (and (eq 'plain-text (org-element-type it))
                             (equal (s-trim it) ""))))))
+            ;; TODO resolve links by going to targets
+            ;; TODO check if we are part of an item and use link?
             ;; use block generator when there are no siblings
             (if (= 0 (length non-ws-siblings))
                 ;; TODO how to tell if we want a navbar?
