@@ -573,12 +573,8 @@ doesn't include leading \"depends\"."
   "Return reports tree from TREE."
   (org-element-map tree 'headline
     (lambda (hl)
-      (and (member org-tj-report-tag
-                   (org-element-property :tags hl))
-           hl))
-    nil t)
-  ;; TODO deal with this later
-  nil)
+      (when (member org-tj-report-tag (org-element-property :tags hl))
+        hl))))
 
 (defun org-tj-project-plan (contents info)
   "Build TaskJuggler project plan.
@@ -633,7 +629,7 @@ Return complete project plan as a string in TaskJuggler syntax."
      ;;    reports.
      (if main-reports
          (mapconcat
-          (lambda (report) (org-tj--build-report report info))
+          (lambda (report) (org-tj--build-report report))
           main-reports "")
        ;; insert title in default reports
        (let* ((title (org-export-data (plist-get info :title) info))
@@ -813,8 +809,8 @@ neither is defined a unique id will be associated to it."
             ;; use block generator when there are no siblings
             (if (= 0 (length non-ws-siblings))
                 ;; TODO how to tell if we want a navbar?
-                (format "<[report id=%s]>" path)
-              (format "<-reportlink id=%s->" path)))))
+                (format "<[report id=\"%s\"]>" path)
+              (format "<-reportlink id=\"%s\"->" path)))))
        (parse-link-http
         (lambda (link)
           (let ((raw-link (org-element-property :raw-link link))
@@ -885,90 +881,145 @@ neither is defined a unique id will be associated to it."
               (org-element-property :raw-value obj))))
        (rich-text (s-trim (funcall parse-contents buffer))))
     (if (s-contains? "\n" rich-text)
-        (format "-8<-\n%s\n->8-" rich-text)
-      (format "\"%s\"" rich-text))))
+        (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
+      (format "'%s'" rich-text))))
 
+
+;; these are all the same for text/task/resource reports
+;; TODO add the rest
 (defconst org-tj--report-attributes
-  '(accountroot resourceroot taskroot auxdir rawhtmlhead timeformat
-                timezone title height width formats loadunit))
+  (list
+   ;; 'accountreport (not fully tested)
+   'accountroot
+   ;; 'auxdir (not fully tested)
+   'balance
+   'columns
+   'currencyformat
+   'end
+   'export
+   'flags
+   'formats
+   'height
+   'hideaccount
+   'hidejournalentry
+   'hideresource
+   'hidetask
+   'journalattributes
+   'journalmode
+   'loadunit
+   'numberformat
+   'opennodes
+   'period
+   'purge
+   'rawhtmlhead
+   'resourcereport
+   'rollupaccount
+   'rollupresource
+   'rolluptask
+   'scenarios
+   'selfcontained
+   'sortaccounts
+   'sortjournalentries
+   'sortresources
+   'sorttasks
+   'start
+   'taskreport
+   'taskroot
+   'textreport
+   'timeformat
+   'timezone
+   'title
+   'tracereport
+   'width))
                
-(defconst org-tj--report-attributes-id
-  '(accountroot resourceroot taskroot))
+;; (defconst org-tj--report-attributes-id
+;;   '(accountroot resourceroot taskroot))
 
-(defconst org-tj--report-attributes-string
-  '(auxdir rawhtmlhead timeformat timezone title))
+;; (defconst org-tj--report-attributes-string
+;;   '(auxdir rawhtmlhead timeformat timezone title))
 
-(defconst org-tj--report-attributes-int
-  '(height width))
+;; (defconst org-tj--report-attributes-int
+;;   '(height width))
 
-(defconst org-tj--report-attributes-discrete
-  '(formats loadunit))
+;; (defconst org-tj--report-attributes-discrete
+;;   '(formats loadunit))
 
 (defconst org-tj--report-attributes-rich-text
   '(caption center epilog footer header headline left prolog right))
 
-(defun org-tj-create-taskreport (hl)
+(defun org-tj--build-report (hl)
   "Create a task report definition."
-  ;; assume the incoming headline is indeed a valid task report
-  (let* ((name (org-element-property :raw-value hl))
-         (id (org-element-property :CUSTOM_ID hl))
-         (rich-text
-          (-some-->
-           (org-element-contents hl)
-           (assq 'section it)
-           (org-element-contents it)
-           (org-element-map it 'src-block #'identity)
-           (--filter
-            (member
-             (org-element-property :name it)
-             (-map #'symbol-name org-tj--report-attributes-rich-text))
-            it)
-           (--map (cons (make-symbol (org-element-property :name it))
-                        (org-tj--src-to-rich-text it))
-                  it)))
-         (props (->> org-tj--report-attributes
-                     (--map (cons it
-                                  (--> it
-                                       (symbol-name it)
-                                       (concat ":" it)
-                                       (upcase it)
-                                       (intern it)
-                                       (org-element-property it hl))))
-                     (--remove (not (cdr it)))))
-         (attrs (->> (append rich-text props)
-                     (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
-                     ;; (-map #'org-tj--parse-attribute)
-                     (-map #'org-tj--indent-string)
-                     (apply #'concat))))
-    (format "taskreport \"%s\" %s {\n%s}" name id attrs)))
+  ;; assume the incoming headline is indeed a valid report
+  (-if-let (type (org-element-property :REPORT_KIND hl))
+      (let* ((name (org-element-property :raw-value hl))
+             (id (org-element-property :CUSTOM_ID hl))
+             (rich-text
+              (-some-->
+               (org-element-contents hl)
+               (assq 'section it)
+               (org-element-contents it)
+               (org-element-map it 'src-block #'identity)
+               (--filter
+                (member
+                 (org-element-property :name it)
+                 (-map #'symbol-name org-tj--report-attributes-rich-text))
+                it)
+               (--map (cons (make-symbol (org-element-property :name it))
+                            (org-tj--src-to-rich-text it))
+                      it)))
+             (props (->> org-tj--report-attributes
+                         (--map (cons it
+                                      (--> it
+                                           (symbol-name it)
+                                           (concat ":" it)
+                                           (upcase it)
+                                           (intern it)
+                                           (org-element-property it hl))))
+                         (--remove (not (cdr it)))))
+             (attrs (->> (append rich-text props)
+                         ;; TODO add validation here?
+                         (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
+                         (-map #'org-tj--indent-string)
+                         (apply #'concat)))
+             (inner-reports
+              (->> (org-tj--subheadlines hl)
+                   (--map (org-tj-create-report it))
+                   (apply #'concat)
+                   org-tj--indent-string)))
+        ;; TODO validate the report type and scream if wrong?
+        (if (not type) ""
+          (format "%s %s \"%s\" {\n%s%s}\n" type id name attrs
+                  inner-reports)))
+    (error "Type not specified for headline: %s"
+           (org-element-property :raw-value hl))))
 
-(defun org-tj--build-report (report info)
-  "Return a report declaration.
-REPORT is a headline.  INFO is a plist used as a communication
-channel."
-  (concat
-   ;; Opening report.
-   (format "%s \"%s\" {\n"
-           (or (org-element-property :REPORT_KIND report) "taskreport")
-           (org-tj-get-name report))
-   ;; Add attributes.
-   (org-tj--indent-string
-    (org-tj--build-attributes
-     report org-tj-valid-report-attributes))
-   ;; Add inner reports.
-   (->> (org-tj--subheadlines report)
-        (--map (org-tj--build-report it info))
-        (apply #'concat)
-        org-tj--indent-string)
-   ;; (org-tj--indent-string
-   ;;  (mapconcat
-   ;;   'identity
-   ;;   (org-element-map (org-element-contents report) 'headline
-   ;;     (lambda (hl) (org-tj--build-report hl info))
-   ;;     info nil 'headline)
-     ;; ""))
-   ;; Closing report.
-   "}\n"))
+;; (defun org-tj--build-report (report info)
+;;   "Return a report declaration.
+;; REPORT is a headline.  INFO is a plist used as a communication
+;; channel."
+;;   (concat
+;;    ;; Opening report.
+;;    (format "%s \"%s\" {\n"
+;;            (or (org-element-property :REPORT_KIND report) "taskreport")
+;;            (org-tj-get-name report))
+;;    ;; Add attributes.
+;;    (org-tj--indent-string
+;;     (org-tj--build-attributes
+;;      report org-tj-valid-report-attributes))
+;;    ;; Add inner reports.
+;;    (->> (org-tj--subheadlines report)
+;;         (--map (org-tj--build-report it info))
+;;         (apply #'concat)
+;;         org-tj--indent-string)
+;;    ;; (org-tj--indent-string
+;;    ;;  (mapconcat
+;;    ;;   'identity
+;;    ;;   (org-element-map (org-element-contents report) 'headline
+;;    ;;     (lambda (hl) (org-tj--build-report hl info))
+;;    ;;     info nil 'headline)
+;;      ;; ""))
+;;    ;; Closing report.
+;;    "}\n"))
 
 (defun org-tj--build-task (task info task-ids tree)
   "Return a task declaration.
