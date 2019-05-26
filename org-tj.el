@@ -884,9 +884,6 @@ neither is defined a unique id will be associated to it."
         (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
       (format "'%s'" rich-text))))
 
-
-;; these are all the same for text/task/resource reports
-;; TODO add the rest
 (defconst org-tj--report-attributes
   (list
    ;; 'accountreport (not fully tested)
@@ -930,7 +927,9 @@ neither is defined a unique id will be associated to it."
    'timezone
    'title
    'tracereport
-   'width))
+   'width)
+  "Attributes for accountreport, resourcereport, textreport, and
+taskreport.")
                
 ;; (defconst org-tj--report-attributes-id
 ;;   '(accountroot resourceroot taskroot))
