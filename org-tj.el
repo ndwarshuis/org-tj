@@ -555,20 +555,6 @@ doesn't include leading \"depends\"."
 
 ;;; Translator Functions
 
-;; (defun org-tj--get-resource-headlines (tree)
-;;   "Return resource list from first subtree tagged with `org-tj-resource-tag'.
-;; TREE is the buffer parse tree. Only headlines with the RESOURCE_ID
-;; property are returned."
-;;   (--> tree
-;;        (org-element-map it 'headline
-;;          (lambda (hl)
-;;            (when (member org-tj-resource-tag
-;;                          (org-element-property :tags hl))
-;;              hl))
-;;          nil t)
-;;        (org-element-map it 'headline #'identity)
-       ;; (--filter (org-element-property :RESOURCE_ID it) it)))
-
 (defun org-tj--get-reports (tree)
   "Return reports tree from TREE."
   (org-element-map tree 'headline
