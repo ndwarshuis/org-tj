@@ -1245,24 +1245,6 @@ ARGS are strings appended to the end of the command."
      (-insert-at 1 (concat "-c " org-tj-config-file) it))
    (s-join " " it)))
 
-;; (defun org-tj--compile-no-report (orig-fn file)
-;;   "Process FILE using ORIG-FN but don't compile to a report.
-;; Instead override the `org-tj-process-command' such that FILE
-;; added to the web server, and don't make the report directory as it is
-;; not necessary."
-;;   (let ((file (expand-file-name file)))
-;;     (org-tj--with-advice
-;;         ;; don't make a reports directory
-;;         ((#'make-directory :override #'ignore))
-;;       ;; override the original process command to load into server
-;;       (let ((org-tj-process-command (org-tj--cmd 'client "add" "%f")))
-;;         (funcall orig-fn file)))
-;;     ;; just return the file path when done
-;;     ;; the list is necessary for org-tj-export-process-and-open
-;;     ;; since the code that opens the files is actually a loop that
-;;     ;; expects a list
-;;     (list file)))
-
 (defun org-tj-open-id-in-browser (id)
   "Open project ID in the default web browser."
   (browse-url
@@ -1278,29 +1260,6 @@ ARGS are strings appended to the end of the command."
        (s-match "project \\([^[:space:]]+\\) " it)
        (nth 1 it)
        (org-tj-open-id-in-browser it)))
-       
-;; (defunorg-tj--export-process-and-open-web (orig-fun &rest args)
-;;   "Process ARGS using ORIG-FUN but open files in browser."
-;;   (org-tj--with-advice
-;;       ((#'org-open-file :override #'org-tj-open-in-browser))
-;;     (apply orig-fun args)))
-
-;; (defun org-tj--add-attributes (orig-fun &rest args)
-;;   "Call ORIG-FUN with ARGS and add extra attributes to projects."
-;;   ;; assume the original list is a newline-delimited string
-;;   ;; break this string into cons cells of keyval pairs
-;;   (let* ((orig-attributes
-;;           (--> (apply orig-fun args)
-;;                (s-split "\n" it t)
-;;                (--map (s-split-up-to " " it 1 t) it)
-;;                (--map (cons (car it) (cadr it)) it)))
-;;          (add-attributes
-;;           (--> org-tj-default-attributes
-;;                (--remove (assoc-string (car it) orig-attributes) it))))
-;;     (--> orig-attributes
-;;          (append it add-attributes)
-;;          (--map (format "%s %s\n" (car it) (cdr it)) it)
-;;          (string-join it))))
 
 (defun org-tj--get-project-id (project)
   "Get the project id from PROJECT.
@@ -1309,36 +1268,6 @@ INFO is a communication channel and is ignored"
   (let ((id (org-element-property :TASK_ID project)))
     (if id (format "prj_%s" id)
       (error "ERROR: No project id found"))))
-
-;; (defun org-tj--add-project-attributes (orig-fun project info)
-;;   "Call ORIG-FUN with PROJECT and INFO.
-;; Add project attributes to PROJECT and also add the project id."
-;;   (org-tj--with-advice
-;;       ;; add default attributes
-;;       ((#'org-tj--build-attributes
-;;         :around #'org-tj--add-attributes)
-;;        ;; add the project id
-;;        ;; just use the toplevel id and add "prj_" to the front
-;;        (#'org-tj-get-id
-;;         :override #'org-tj--get-project-id))
-;;     (funcall orig-fun project info)))
-
-;; ;; TODO this can probably be consolidated
-;; (defun org-tj--add-task-attributes* (orig-fun task attributes)
-;;   (let* ((orig-attributes (funcall orig-fun task attributes))
-;;          (start (-some->>
-;;                  (org-tj-get-start task)
-;;                  (format "start %s\n")))
-;;          (end (-some->>
-;;                (org-tj-get-end task)
-;;                (format "end %s\n"))))
-;;     (s-join "" (-non-nil (list orig-attributes start end)))))
-
-;; (defun org-tj--add-task-attributes (orig-fun task info)
-;;   (org-tj--with-advice
-;;       ((#'org-tj--build-attributes
-;;         :around #'org-tj--add-task-attributes*))
-;;     (funcall orig-fun task info)))
 
 (defun org-tj-add-to-server (file)
   "Add tj3 project FILE to web server."
@@ -1661,15 +1590,6 @@ Will automatically create an ID to dependency if it does not exist."
 (defun org-tj-show-depends ()
   (interactive)
   (org-columns nil "%25ITEM %TASK_ID %DEPENDS"))
-
-;; (advice-add #'org-tj--build-project :around
-;;             #'org-tj--add-project-attributes)
-;; (advice-add #'org-tj-export-process-and-open :around
-;;             #'org-tj--export-process-and-open-web)
-;; (advice-add #'org-tj-compile :around
-;;             #'org-tj--compile-no-report)
-;; (advice-add #'org-tj--build-task :around
-;;             #'org-tj--add-task-attributes)
 
 (provide 'org-tj)
 ;;; org-tj.el ends here
