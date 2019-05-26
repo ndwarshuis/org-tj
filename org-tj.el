@@ -928,21 +928,8 @@ neither is defined a unique id will be associated to it."
    'title
    'tracereport
    'width)
-  "Attributes for accountreport, resourcereport, textreport, and
-taskreport.")
+  "Attributes for accountreport, resourcereport, textreport, and taskreport.")
                
-;; (defconst org-tj--report-attributes-id
-;;   '(accountroot resourceroot taskroot))
-
-;; (defconst org-tj--report-attributes-string
-;;   '(auxdir rawhtmlhead timeformat timezone title))
-
-;; (defconst org-tj--report-attributes-int
-;;   '(height width))
-
-;; (defconst org-tj--report-attributes-discrete
-;;   '(formats loadunit))
-
 (defconst org-tj--report-attributes-rich-text
   '(caption center epilog footer header headline left prolog right))
 
