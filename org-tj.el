@@ -965,34 +965,6 @@ neither is defined a unique id will be associated to it."
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
 
-;; (defun org-tj--build-report (report info)
-;;   "Return a report declaration.
-;; REPORT is a headline.  INFO is a plist used as a communication
-;; channel."
-;;   (concat
-;;    ;; Opening report.
-;;    (format "%s \"%s\" {\n"
-;;            (or (org-element-property :REPORT_KIND report) "taskreport")
-;;            (org-tj-get-name report))
-;;    ;; Add attributes.
-;;    (org-tj--indent-string
-;;     (org-tj--build-attributes
-;;      report org-tj-valid-report-attributes))
-;;    ;; Add inner reports.
-;;    (->> (org-tj--subheadlines report)
-;;         (--map (org-tj--build-report it info))
-;;         (apply #'concat)
-;;         org-tj--indent-string)
-;;    ;; (org-tj--indent-string
-;;    ;;  (mapconcat
-;;    ;;   'identity
-;;    ;;   (org-element-map (org-element-contents report) 'headline
-;;    ;;     (lambda (hl) (org-tj--build-report hl info))
-;;    ;;     info nil 'headline)
-;;      ;; ""))
-;;    ;; Closing report.
-;;    "}\n"))
-
 (defun org-tj--build-task (task info task-ids tree)
   "Return a task declaration.
 
