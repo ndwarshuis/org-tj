@@ -917,11 +917,11 @@ neither is defined a unique id will be associated to it."
    'accountroot
    ;; 'auxdir (not fully tested)
    'balance
-   'columns
+   ;; 'columns
    'currencyformat
    'end
    'export
-   'flags
+   ;; 'flags
    'formats
    'height
    'hideaccount
@@ -959,13 +959,13 @@ neither is defined a unique id will be associated to it."
 
 (defconst org-tj--list-attributes
   (list
-   allocate
-   columns
-   depends
-   flags
-   limits
-   precedes
-   shifts)
+   'allocate
+   'columns
+   'depends
+   'flags
+   'limits
+   'precedes
+   'shifts)
   "A list of taskjuggler list attributes")
                
 (defconst org-tj--report-attributes-rich-text
@@ -991,20 +991,33 @@ neither is defined a unique id will be associated to it."
                (--map (cons (make-symbol (org-element-property :name it))
                             (org-tj--src-to-rich-text it))
                       it)))
-             (props (->> org-tj--report-attributes
-                         (--map (cons it
-                                      (--> it
-                                           (symbol-name it)
-                                           (concat ":" it)
-                                           (upcase it)
-                                           (intern it)
-                                           (org-element-property it hl))))
-                         (--remove (not (cdr it)))))
-             (attrs (->> (append rich-text props)
-                         ;; TODO add validation here?
-                         (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
-                         (-map #'org-tj--indent-string)
-                         (apply #'concat)))
+             (props
+              (-some->>
+               org-tj--report-attributes
+               (--map (cons it
+                            (--> it
+                                 (symbol-name it)
+                                 (concat ":" it)
+                                 (upcase it)
+                                 (intern it)
+                                 (org-element-property it hl))))
+               (--remove (not (cdr it)))))
+             (list-attrs
+              (-some-->
+               (org-element-contents hl)
+               (assq 'section it)
+               (org-element-map it 'drawer
+                 (lambda (d)
+                   (org-tj--indent-string
+                    (org-tj--parse-list-attribute d))))
+               (s-join "\n" it)))
+             (attrs
+              (-some->>
+               (append rich-text props)
+               ;; TODO add validation here?
+               (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
+               (-map #'org-tj--indent-string)
+               (apply #'concat)))
              (inner-reports
               (->> (org-tj--subheadlines hl)
                    (--map (org-tj-create-report it))
@@ -1012,7 +1025,7 @@ neither is defined a unique id will be associated to it."
                    org-tj--indent-string)))
         ;; TODO validate the report type and scream if wrong?
         (if (not type) ""
-          (format "%s %s \"%s\" {\n%s%s}\n" type id name attrs
+          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat attrs list-attrs)
                   inner-reports)))
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
