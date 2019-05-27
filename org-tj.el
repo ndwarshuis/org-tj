@@ -710,6 +710,47 @@ neither is defined a unique id will be associated to it."
    ;; Closing resource.
    "}\n"))
 
+(defun org-tj--parse-list-attribute (drawer)
+  "Convert DRAWER to list attribute."
+  (letrec
+      ;; TODO validate name of attribute
+      ((name (downcase (org-element-property :drawer-name drawer)))
+       (contents (org-element-contents drawer))
+       (items (org-element-map contents 'item #'identity nil nil 'item))
+       (parse-contents
+        (lambda (item)
+          (->> (assq 'paragraph item)
+               org-element-contents
+               car
+               s-trim
+               substring-no-properties)))
+       (parse-item
+        (lambda (item)
+          (let ((column (funcall parse-contents item))
+                ;; TODO some list attributes don't have their own
+                ;; attributes, validate that maybe?
+                (attrs
+                 (-some-->
+                  (org-element-contents item)
+                  (org-element-map it 'item #'identity nil nil 'item)
+                  (--map
+                   (let ((key (->> (org-element-property :tag it)
+                                   car
+                                   substring-no-properties))
+                         (val (->> (assq 'paragraph it)
+                                   org-element-contents
+                                   car
+                                   s-trim
+                                   substring-no-properties)))
+                     (format "%s \"%s\"" key val))
+                   it)
+                  (s-join ", " it))))
+            (if attrs (format "%s { %s }" column attrs) column)))))
+    (->> items
+         (--map (funcall parse-item it))
+         (s-join ", ")
+         (format "%s %s" name))))
+
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
   (letrec
@@ -915,6 +956,17 @@ neither is defined a unique id will be associated to it."
    'tracereport
    'width)
   "Attributes for accountreport, resourcereport, textreport, and taskreport.")
+
+(defconst org-tj--list-attributes
+  (list
+   allocate
+   columns
+   depends
+   flags
+   limits
+   precedes
+   shifts)
+  "A list of taskjuggler list attributes")
                
 (defconst org-tj--report-attributes-rich-text
   '(caption center epilog footer header headline left prolog right))
