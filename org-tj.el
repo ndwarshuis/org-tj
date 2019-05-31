@@ -479,45 +479,92 @@ ID is a string."
 
 ;;; Dependencies
 
-(defun org-tj-resolve-dependencies (task info tree)
-  "Return a list of all tasks TASK depends on.
-TASK is a headline.  INFO is a plist used as a communication
-channel. TREE is the buffer parse tree."
-  (let ((deps-ids
-         ;; Get all dependencies specified in BLOCKER and DEPENDS task
-         ;; properties.  Clean options from them.
-         (let ((deps (concat (org-element-property :BLOCKER task)
-                             (org-element-property :DEPENDS task))))
-           (and deps
-                (split-string (replace-regexp-in-string "{.*?}" "" deps)
-			      "[ ,]* +"))))
-        depends)
-    (when deps-ids
-      ;; Find tasks with :task_id: property matching id in DEPS-IDS.
-      ;; Add them to DEPENDS.
-      (let* ((project (org-tj-get-project tree))
-             (tasks (if org-tj-keep-project-as-task project
-                      (org-element-contents project))))
-        (setq depends
-              (org-element-map tasks 'headline
-                (lambda (task)
-                  (let ((task-id (or (org-element-property :TASK_ID task)
-				     (org-element-property :ID task))))
-                    (and task-id (member task-id deps-ids) task))))))
-      ;; Check BLOCKER and DEPENDS properties.  If "previous-sibling"
-      ;; belongs to DEPS-ID, add it to DEPENDS.
-      (when (and (member-ignore-case "previous-sibling" deps-ids)
-                 (not (org-export-first-sibling-p task info)))
-        (let ((prev (org-export-get-previous-element task info)))
-          (and (not (memq prev depends)) (push prev depends)))))
-    ;; Check ORDERED status of parent.
-    (let ((parent (org-export-get-parent task)))
-      (when (and parent
-                 (org-element-property :ORDERED parent)
-                 (not (org-export-first-sibling-p task info)))
-        (push (org-export-get-previous-element task info) depends)))
-    ;; Return dependencies.
+(defun org-tj--drawer-by-name (hl name)
+  "Return first drawer with NAME from headline HL."
+  (-some--> (org-element-contents hl)
+            (assq 'section it)
+            (org-element-map it 'drawer #'identity)
+            (--first (->> (org-element-property :drawer-name it)
+                          upcase
+                          (equal (upcase name)))
+                     it)))
+
+(defun org-tj-resolve-dependencies (task _info tree)
+  "Return a list of all tasks on which TASK depends."
+  ;; TODO add blocker eventually, baby steps
+  (let* ((deps-ids
+          (-some->>
+           (org-tj--drawer-by-name task "depends")
+           org-tj--get-items
+           (-map #'org-tj--get-item-text)))
+         (wants-prev-sibling?
+          (and
+           (member-ignore-case "previous-sibling" deps-ids)
+           (not (org-export-first-sibling-p task nil))))
+         (is-ordered?
+          (and
+           (org-element-property :ORDERED (org-export-get-parent task))
+           (not (org-export-first-sibling-p task nil))))
+         (prev-task
+          (when (or wants-prev-sibling? is-ordered?)
+            (list (org-export-get-previous-element task nil))))
+         (depends
+          (if (not deps-ids) prev-task
+            (--> (org-tj-get-project tree)
+                 (org-element-map it 'headline
+                   (lambda (task)
+                     (-when-let (task-id
+                                 (or (org-element-property :TASK_ID task)
+                                     (org-element-property :ID task)))
+                       (when (member task-id deps-ids) task))))
+                 (append prev-task it)
+                 (-non-nil it)
+                 (-uniq it)))))
+    (print (org-element-property :raw-value task))
+    (print deps-ids)
+    (print (list is-ordered? wants-prev-sibling?))
+    (print (--map (eq it 'headline) depends))
     depends))
+
+;; (defun org-tj-resolve-dependencies (task info tree)
+;;   "Return a list of all tasks TASK depends on.
+;; TASK is a headline.  INFO is a plist used as a communication
+;; channel. TREE is the buffer parse tree."
+;;   (let ((deps-ids
+;;          ;; Get all dependencies specified in BLOCKER and DEPENDS task
+;;          ;; properties.  Clean options from them.
+;;          (let ((deps (concat (org-element-property :BLOCKER task)
+;;                              (org-element-property :DEPENDS task))))
+;;            (and deps
+;;                 (split-string (replace-regexp-in-string "{.*?}" "" deps)
+;; 			      "[ ,]* +"))))
+;;         depends)
+;;     (when deps-ids
+;;       ;; Find tasks with :task_id: property matching id in DEPS-IDS.
+;;       ;; Add them to DEPENDS.
+;;       (let* ((project (org-tj-get-project tree))
+;;              (tasks (if org-tj-keep-project-as-task project
+;;                       (org-element-contents project))))
+;;         (setq depends
+;;               (org-element-map tasks 'headline
+;;                 (lambda (task)
+;;                   (let ((task-id (or (org-element-property :TASK_ID task)
+;; 				     (org-element-property :ID task))))
+;;                     (and task-id (member task-id deps-ids) task))))))
+;;       ;; Check BLOCKER and DEPENDS properties.  If "previous-sibling"
+;;       ;; belongs to DEPS-ID, add it to DEPENDS.
+;;       (when (and (member-ignore-case "previous-sibling" deps-ids)
+;;                  (not (org-export-first-sibling-p task info)))
+;;         (let ((prev (org-export-get-previous-element task info)))
+;;           (and (not (memq prev depends)) (push prev depends)))))
+;;     ;; Check ORDERED status of parent.
+;;     (let ((parent (org-export-get-parent task)))
+;;       (when (and parent
+;;                  (org-element-property :ORDERED parent)
+;;                  (not (org-export-first-sibling-p task info)))
+;;         (push (org-export-get-previous-element task info) depends)))
+;;     ;; Return dependencies.
+;;     depends))
 
 (defun org-tj-format-dependencies (dependencies task info task-ids)
   "Format DEPENDENCIES to match TaskJuggler syntax.
@@ -714,38 +761,38 @@ neither is defined a unique id will be associated to it."
    ;; Closing resource.
    "}\n"))
 
+(defun org-tj--get-items (element)
+  "Get list of attributes from ELEMENT."
+  (-when-let (contents (org-element-contents element))
+    (org-element-map contents 'item #'identity nil nil 'item)))
+
+(defun org-tj--get-item-text (item)
+  "Return the text of an ITEM."
+  (-some->> (assq 'paragraph item)
+            org-element-contents
+            car
+            s-trim
+            substring-no-properties))
+
 (defun org-tj--parse-list-attribute (drawer)
   "Convert DRAWER to list attribute."
   (letrec
       ;; TODO validate name of attribute
       ((name (downcase (org-element-property :drawer-name drawer)))
-       (contents (org-element-contents drawer))
-       (items (org-element-map contents 'item #'identity nil nil 'item))
-       (parse-contents
-        (lambda (item)
-          (->> (assq 'paragraph item)
-               org-element-contents
-               car
-               s-trim
-               substring-no-properties)))
+       (items (org-tj--get-items drawer))
        (parse-item
         (lambda (item)
-          (let ((column (funcall parse-contents item))
+          (let ((column (org-tj--get-item-text item))
                 ;; TODO some list attributes don't have their own
                 ;; attributes, validate that maybe?
                 (attrs
                  (-some-->
-                  (org-element-contents item)
-                  (org-element-map it 'item #'identity nil nil 'item)
+                  (org-tj--get-items item)
                   (--map
                    (let ((key (->> (org-element-property :tag it)
                                    car
                                    substring-no-properties))
-                         (val (->> (assq 'paragraph it)
-                                   org-element-contents
-                                   car
-                                   s-trim
-                                   substring-no-properties)))
+                         (val (org-tj--get-item-text it)))
                      (format "%s \"%s\"" key val))
                    it)
                   (s-join ", " it))))
