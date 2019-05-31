@@ -350,9 +350,13 @@ parse tree of the buffer."
   ;; TODO this is named poorly, really this is getting project metadata
   ;; for the tj element named "project" ...it is not actually the
   ;; project tasks
+  ;; TODO what if we have project tags in the subtree, we don't need
+  ;; those
   (org-element-map tree 'headline
     (lambda (hl)
-      (and (member org-tj-project-tag (org-element-property :tags hl)) hl))))
+      (when (->> (org-element-property :tags hl)
+                 (member org-tj-project-tag))
+        hl))))
 
 (defun org-tj-get-id (item ids)
   "Return id for task or resource ITEM and list of IDS."
