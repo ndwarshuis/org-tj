@@ -506,46 +506,6 @@ ID is a string."
                  (-uniq it)))))
     depends))
 
-;; (defun org-tj-resolve-dependencies (task info tree)
-;;   "Return a list of all tasks TASK depends on.
-;; TASK is a headline.  INFO is a plist used as a communication
-;; channel. TREE is the buffer parse tree."
-;;   (let ((deps-ids
-;;          ;; Get all dependencies specified in BLOCKER and DEPENDS task
-;;          ;; properties.  Clean options from them.
-;;          (let ((deps (concat (org-element-property :BLOCKER task)
-;;                              (org-element-property :DEPENDS task))))
-;;            (and deps
-;;                 (split-string (replace-regexp-in-string "{.*?}" "" deps)
-;; 			      "[ ,]* +"))))
-;;         depends)
-;;     (when deps-ids
-;;       ;; Find tasks with :task_id: property matching id in DEPS-IDS.
-;;       ;; Add them to DEPENDS.
-;;       (let* ((project (org-tj-get-project tree))
-;;              (tasks (if org-tj-keep-project-as-task project
-;;                       (org-element-contents project))))
-;;         (setq depends
-;;               (org-element-map tasks 'headline
-;;                 (lambda (task)
-;;                   (let ((task-id (or (org-element-property :TASK_ID task)
-;; 				     (org-element-property :ID task))))
-;;                     (and task-id (member task-id deps-ids) task))))))
-;;       ;; Check BLOCKER and DEPENDS properties.  If "previous-sibling"
-;;       ;; belongs to DEPS-ID, add it to DEPENDS.
-;;       (when (and (member-ignore-case "previous-sibling" deps-ids)
-;;                  (not (org-export-first-sibling-p task info)))
-;;         (let ((prev (org-export-get-previous-element task info)))
-;;           (and (not (memq prev depends)) (push prev depends)))))
-;;     ;; Check ORDERED status of parent.
-;;     (let ((parent (org-export-get-parent task)))
-;;       (when (and parent
-;;                  (org-element-property :ORDERED parent)
-;;                  (not (org-export-first-sibling-p task info)))
-;;         (push (org-export-get-previous-element task info) depends)))
-;;     ;; Return dependencies.
-;;     depends))
-
 (defun org-tj-format-dependencies (dependencies task info task-ids)
   "Format DEPENDENCIES to match TaskJuggler syntax.
 DEPENDENCIES is list of dependencies for TASK, as returned by
