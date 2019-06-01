@@ -291,7 +291,7 @@ This hook is run with the name of the file as argument.")
 
 ;;; Unique IDs
 
-(defun org-tj--assign-task-ids (tasks info)
+(defun org-tj--assign-task-ids (tasks _info)
   "Assign a unique ID to each task in TASKS.
 TASKS is a list of headlines.  INFO is a plist used as a
 communication channel.  Return value is an alist between
@@ -506,7 +506,7 @@ ID is a string."
                  (-uniq it)))))
     depends))
 
-(defun org-tj--format-dependencies (dependencies task info task-ids)
+(defun org-tj--format-dependencies (dependencies task _info task-ids)
   "Format DEPENDENCIES to match TaskJuggler syntax.
 DEPENDENCIES is list of dependencies for TASK, as returned by
 `org-tj-resolve-depedencies'.  TASK is a headline.
@@ -877,7 +877,7 @@ days from now."
                       (format-time-string "%Y-%m-%d"))
                   (or (alist-get 'end kws)
                       (-some->> (org-tj--get-end project)
-                                (format "- %s" end))
+                                (format "- %s"))
                       (format "+%sd" org-tj-default-project-duration))))
          (orig-attrs (alist-get 'attribute kws))
          (add-attrs
@@ -1019,7 +1019,7 @@ a unique id will be associated to it."
                (apply #'concat)))
              (inner-reports
               (->> (org-tj--subheadlines hl)
-                   (--map (org-tj-create-report it))
+                   (--map (org-tj--build-report it))
                    (apply #'concat)
                    org-tj--indent-string)))
         ;; TODO validate the report type and scream if wrong?
