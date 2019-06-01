@@ -621,12 +621,12 @@ Return complete project plan as a string in TaskJuggler syntax."
          (resource-ids (org-tj-assign-resource-ids main-resources))
          (main-reports (org-tj--get-reports tree))
          (main-tasks (org-tj-get-project tree))
-          ;; If `org-tj-keep-project-as-task' is
-          ;; non-nil, there is only one task.  Otherwise, every
-          ;; direct children of PROJECT is a top level task.
-          ;; (if org-tj-keep-project-as-task (list project)
-          ;;   (or (org-tj--subheadlines project)
-          ;;       (error "No task specified"))))
+         ;; If `org-tj-keep-project-as-task' is
+         ;; non-nil, there is only one task.  Otherwise, every
+         ;; direct children of PROJECT is a top level task.
+         ;; (if org-tj-keep-project-as-task (list project)
+         ;;   (or (org-tj--subheadlines project)
+         ;;       (error "No task specified"))))
          (task-ids (org-tj-assign-task-ids main-tasks info)))
     (concat
      ;; 1. Insert header.
@@ -646,17 +646,21 @@ Return complete project plan as a string in TaskJuggler syntax."
      ;; 5. Insert tasks.
      (->> main-tasks
           (--map
-           (progn
-             ;; If no resource is allocated among tasks, allocate one to
-             ;; the first task.
-             (unless (org-element-map it 'headline
-                       (lambda (task) (org-element-property :ALLOCATE task))
-                       nil t)
-               ;; TODO set better default resource
-               ;; (or (org-tj-get-id (car main-resources) resource-ids)
-               (let ((top-res (user-login-name)))
-                 (-> it (org-element-put-property :ALLOCATE top-res)
-                     (org-tj--build-task info task-ids tree))))))
+           ;; If no resource is allocated among tasks, allocate one to
+           ;; the first task.
+           ;; TODO this will fail if we have two subtrees and one
+           ;; has an ALLOCATES drawer and the other does not
+           (let ((allocate
+                  (unless (org-element-map it 'headline
+                          (lambda (task)
+                            (-some->>
+                             (org-tj--drawer-by-name task "allocate")
+                             (org-tj--get-items)))
+                          nil t)
+                    (user-login-name))))
+             ;; TODO set better default resource
+             ;; (or (org-tj-get-id (car main-resources) resource-ids)
+             (org-tj--build-task it info task-ids tree allocate)))
           (apply #'concat))
      ;; 6. Insert reports.  If no report is defined, insert default
      ;;    reports.
@@ -1077,7 +1081,7 @@ neither is defined a unique id will be associated to it."
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
 
-(defun org-tj--build-task (task info task-ids tree)
+(defun org-tj--build-task (task info task-ids tree &optional allocate)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -1087,7 +1091,12 @@ All valid attributes from TASK are inserted.  If TASK defines
 a property \"task_id\" it will be used as the id for this task.
 Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
-  (let* ((allocate (org-element-property :ALLOCATE task))
+  (let* ((allocate (or allocate
+                       (-some->>
+                        (org-tj--drawer-by-name task "allocate")
+                        (org-tj--get-items)
+                        (-map #'org-tj--get-item-text)
+                        (s-join ", "))))
          (complete
           (if (eq (org-element-property :todo-type task) 'done) "100"
             (org-element-property :COMPLETE task)))
