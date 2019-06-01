@@ -520,10 +520,6 @@ ID is a string."
                  (append prev-task it)
                  (-non-nil it)
                  (-uniq it)))))
-    (print (org-element-property :raw-value task))
-    (print deps-ids)
-    (print (list is-ordered? wants-prev-sibling?))
-    (print (--map (eq it 'headline) depends))
     depends))
 
 ;; (defun org-tj-resolve-dependencies (task info tree)
