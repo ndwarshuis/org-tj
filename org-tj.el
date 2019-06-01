@@ -494,7 +494,7 @@ ID is a string."
             (list (org-export-get-previous-element task nil))))
          (depends
           (if (not deps-ids) prev-task
-            (--> (org-tj--get-project tree)
+            (--> (org-tj--get-tasks tree)
                  (org-element-map it 'headline
                    (lambda (task)
                      (-when-let (task-id
@@ -817,13 +817,10 @@ doesn't include leading \"depends\"."
 (defconst org-tj--report-attributes-rich-text
   '(caption center epilog footer header headline left prolog right))
 
-(defun org-tj--get-project (tree)
+(defun org-tj--get-tasks (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
-  ;; TODO this is named poorly, really this is getting project metadata
-  ;; for the tj element named "project" ...it is not actually the
-  ;; project tasks
   ;; TODO what if we have project tags in the subtree, we don't need
   ;; those
   (org-element-map tree 'headline
@@ -851,45 +848,44 @@ parse tree of the buffer."
       (when (member org-tj-report-tag (org-element-property :tags hl))
         hl))))
 
-(defun org-tj--build-project (project info tree)
+(defun org-tj--build-project (tasks info tree)
   "Return a project declaration.
 PROJECT is a headline.  INFO is a plist used as a communication
 channel.  If no start date is specified, start today.  If no end
 date is specified, end `org-tj-default-project-duration'
 days from now."
   (let* ((kws (org-tj--file-tj3-keywords tree))
-         (first-line
-          (format "project %s \"%s\" \"%s\" %s %s {\n"
-                  (or (alist-get 'id kws)
-                      (--> (plist-get info :input-buffer)
-                           (f-no-ext it)
-                           ;; TODO this is likely incomplete
-                           (s-replace "-" "_" it)))
-                  ;; TODO make up some name if none given
-                  (alist-get 'name kws)
-                  ;; Version is obtained through :TASKJUGGLER_VERSION:
-                  ;; property or `org-tj-default-project-version'.
-                  (or (alist-get 'version kws)
-                      org-tj-default-project-version)
-                  ;; TODO make these take org timestamps
-                  (or (alist-get 'start kws)
-                      (org-tj--get-start project)
-                      (format-time-string "%Y-%m-%d"))
-                  (or (alist-get 'end kws)
-                      (-some->> (org-tj--get-end project)
-                                (format "- %s"))
-                      (format "+%sd" org-tj-default-project-duration))))
+         (id (or (alist-get 'id kws)
+                 (--> (plist-get info :input-buffer)
+                      (f-no-ext it)
+                      ;; TODO this is likely incomplete
+                      (s-replace "-" "_" it))))
+         ;; TODO make up some name if none given
+         (name (alist-get 'name kws))
+         ;; Version is obtained through :TASKJUGGLER_VERSION:
+         ;; property or `org-tj-default-project-version'.
+         (version (or (alist-get 'version kws)
+                      org-tj-default-project-version))
+         ;; TODO make start and end take org timestamps
+         (start (or (alist-get 'start kws)
+                    ;; TODO get the start date of the first defined
+                    ;; task?
+                    (org-tj--get-start (car tasks))
+                    (format-time-string "%Y-%m-%d")))
+         (end (or (alist-get 'end kws)
+                  (-some->> (org-tj--get-end (car tasks))
+                            (format "- %s"))
+                  (format "+%sd" org-tj-default-project-duration)))
          (orig-attrs (alist-get 'attribute kws))
          (add-attrs
           (--> org-tj-default-attributes
                (--remove (assoc-string (car it) orig-attrs) it)))
-         (attrs (--> orig-attrs
-                     (append it add-attrs)
-                     (--map (format "%s %s\n" (car it) (cdr it)) it)
-                     (string-join it)
-                     (org-tj--indent-string it))))
-    ;; Closing project.
-    (concat first-line attrs "}\n")))
+         (attrs (->> (append orig-attrs add-attrs)
+                     (--map (format "%s %s" (car it) (cdr it)))
+                     (s-join "\n")
+                     (org-tj--indent-string))))
+    (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
+            id name version start end attrs)))
 
 (defun org-tj--build-task (task info task-ids tree &optional allocate)
   "Return a task declaration.
@@ -1071,25 +1067,16 @@ neither is defined a unique id will be associated to it."
 INFO is a plist holding export options. Return formatted string in 
 taskjuggler syntax."
   (let* ((tree (plist-get info :parse-tree))
-         ;; TODO return more than one tree if more than one tagged
-         (project (car (or (org-tj--get-project tree)
-                           (error "No project specified"))))
+         (tasks (org-tj--get-tasks tree))
+         (task-ids (org-tj--assign-task-ids tasks info))
          (resources (org-tj--get-resource-headlines tree))
          (resource-ids (org-tj--assign-resource-ids resources))
-         (reports (org-tj--get-reports tree))
-         (tasks (org-tj--get-project tree))
-         ;; If `org-tj-keep-project-as-task' is
-         ;; non-nil, there is only one task.  Otherwise, every
-         ;; direct children of PROJECT is a top level task.
-         ;; (if org-tj-keep-project-as-task (list project)
-         ;;   (or (org-tj--subheadlines project)
-         ;;       (error "No task specified"))))
-         (task-ids (org-tj--assign-task-ids tasks info)))
+         (reports (org-tj--get-reports tree)))
     (concat
      ;; 1. Insert header.
      (org-element-normalize-string org-tj-default-global-header)
      ;; 2. Insert project.
-     (org-tj--build-project project info tree)
+     (org-tj--build-project tasks info tree)
      ;; 3. Insert global properties.
      (org-element-normalize-string org-tj-default-global-properties)
      ;; 4. Insert resources.  Provide a default one if none is
@@ -1128,7 +1115,8 @@ taskjuggler syntax."
        ;; insert title in default reports
        (let* ((title (org-export-data (plist-get info :title) info))
               (report-title (if (string= title "")
-                                (org-tj--get-name project)
+                                ;; TODO why are we getting this name?
+                                (org-tj--get-name (car tasks))
                               title)))
          (mapconcat
           'org-element-normalize-string
