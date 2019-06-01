@@ -5,7 +5,7 @@
 ;; Author: Nate Dwarshuis <natedwarshuis@gmail.com>
 ;; Keywords: outlines
 ;; Homepage: https://github.com/ndwarshuis/org-tj3
-;; Package-Requires: ((emacs "25") (dash "2.15") (helm "3.2"))
+;; Package-Requires: ((emacs "25") (dash "2.15"))
 ;; Version: 0.0.1
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -37,7 +37,6 @@
 (require 'dash)
 (require 'org-element)
 (require 'subr-x)
-(require 'helm)
 (require 'ox)
 (eval-when-compile (require 'cl-lib))
 
@@ -1166,8 +1165,86 @@ a unique id will be associated to it."
      ;; Closing task.
      "}\n")))
 
+(defun org-tj--collect-errors (buffer)
+  "Collect some kind of errors from \"tj3\" command output.
 
-;;; Interactive Functions
+BUFFER is the buffer containing output.
+
+Return collected error types as a string, or nil if there was
+none."
+  (with-current-buffer buffer
+    (save-excursion
+      (goto-char (point-min))
+      (let ((case-fold-search t)
+	    (errors ""))
+	(while (re-search-forward "^.+:[0-9]+: \\(.*\\)$" nil t)
+	  (setq errors (concat errors " " (match-string 1))))
+	(and (org-string-nw-p errors) (org-trim errors))))))
+
+;; (defmacro org-tj--with-advice (adlist &rest body)
+;;   "Execute BODY with temporary advice in ADLIST.
+
+;; Each element of ADLIST should be a list of the form
+;;   (SYMBOL WHERE FUNCTION [PROPS])
+;; suitable for passing to `advice-add'.  The BODY is wrapped in an
+;; `unwind-protect' form, so the advice will be removed even in the
+;; event of an error or nonlocal exit."
+;;   (declare (debug ((&rest (&rest form)) body))
+;;            (indent 1))
+;;   `(progn
+;;      ,@(mapcar (lambda (adform)
+;;                  (cons 'advice-add adform))
+;;                adlist)
+;;      (unwind-protect (progn ,@body)
+;;        ,@(mapcar (lambda (adform)
+;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
+;;                  adlist))))
+
+(defun org-tj--cmd (type &rest args)
+  "Return formatted shell command string for TYPE.
+ARGS are strings appended to the end of the command."
+  (-->
+   (cl-case type
+     (client "tj3client")
+     (deamon "tj3d")
+     (web "tj3webd")
+     (t (error "Unknown command type: %s" type)))
+   (list it)
+   (append it (list "--silent" "--no-color"))
+   (append it args)
+   (if (not org-tj-config-file) it
+     (-insert-at 1 (concat "-c " org-tj-config-file) it))
+   (s-join " " it)))
+
+(defun org-tj-open-id-in-browser (id)
+  "Open project ID in the default web browser."
+  (browse-url
+   (format
+    ;; TODO make port a variable
+    "http://localhost:8081/taskjuggler?project=%s;report=report" id)))
+
+(defun org-tj-open-in-browser (file)
+  "Open tj3 FILE in the default web browser."
+  ;; TODO check if project is loaded and load if not loaded
+  ;; if it is loaded throw a warning
+  (--> (with-temp-buffer (insert-file-contents file) (buffer-string))
+       (s-match "project \\([^[:space:]]+\\) " it)
+       (nth 1 it)
+       (org-tj-open-id-in-browser it)))
+
+(defun org-tj--get-resource-headlines (tree)
+  "Return list of all org taskjuggler resource headlines."
+  (--> (or tree (org-element-parse-buffer))
+       (org-element-map it 'headline
+         (lambda (hl)
+           (when (member org-tj-resource-tag
+                         (org-element-property :tags hl))
+             hl))
+         nil t)
+       (org-element-map it 'headline #'identity)
+       (--filter (org-element-property :RESOURCE_ID it) it)))
+
+;; interactive functions
 
 ;;;###autoload
 (defun org-tj-export (&optional async subtreep visible-only)
@@ -1320,333 +1397,6 @@ Return a list of reports."
 ;; 	  (message "Process completed.")
 ;; 	(error (format "TaskJuggler failed with errors: %s" errors))))
 ;;     (file-expand-wildcards (format "%s/*.html" out-dir))))
-
-(defun org-tj--collect-errors (buffer)
-  "Collect some kind of errors from \"tj3\" command output.
-
-BUFFER is the buffer containing output.
-
-Return collected error types as a string, or nil if there was
-none."
-  (with-current-buffer buffer
-    (save-excursion
-      (goto-char (point-min))
-      (let ((case-fold-search t)
-	    (errors ""))
-	(while (re-search-forward "^.+:[0-9]+: \\(.*\\)$" nil t)
-	  (setq errors (concat errors " " (match-string 1))))
-	(and (org-string-nw-p errors) (org-trim errors))))))
-
-;; (defmacro org-tj--with-advice (adlist &rest body)
-;;   "Execute BODY with temporary advice in ADLIST.
-
-;; Each element of ADLIST should be a list of the form
-;;   (SYMBOL WHERE FUNCTION [PROPS])
-;; suitable for passing to `advice-add'.  The BODY is wrapped in an
-;; `unwind-protect' form, so the advice will be removed even in the
-;; event of an error or nonlocal exit."
-;;   (declare (debug ((&rest (&rest form)) body))
-;;            (indent 1))
-;;   `(progn
-;;      ,@(mapcar (lambda (adform)
-;;                  (cons 'advice-add adform))
-;;                adlist)
-;;      (unwind-protect (progn ,@body)
-;;        ,@(mapcar (lambda (adform)
-;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
-;;                  adlist))))
-
-(defun org-tj--cmd (type &rest args)
-  "Return formatted shell command string for TYPE.
-ARGS are strings appended to the end of the command."
-  (-->
-   (cl-case type
-     (client "tj3client")
-     (deamon "tj3d")
-     (web "tj3webd")
-     (t (error "Unknown command type: %s" type)))
-   (list it)
-   (append it (list "--silent" "--no-color"))
-   (append it args)
-   (if (not org-tj-config-file) it
-     (-insert-at 1 (concat "-c " org-tj-config-file) it))
-   (s-join " " it)))
-
-(defun org-tj-open-id-in-browser (id)
-  "Open project ID in the default web browser."
-  (browse-url
-   (format
-    ;; TODO make port a variable
-    "http://localhost:8081/taskjuggler?project=%s;report=report" id)))
-
-(defun org-tj-open-in-browser (file)
-  "Open tj3 FILE in the default web browser."
-  ;; TODO check if project is loaded and load if not loaded
-  ;; if it is loaded throw a warning
-  (--> (with-temp-buffer (insert-file-contents file) (buffer-string))
-       (s-match "project \\([^[:space:]]+\\) " it)
-       (nth 1 it)
-       (org-tj-open-id-in-browser it)))
-
-(defun org-tj--get-project-id (project)
-  "Get the project id from PROJECT.
-The id is just the 'TASK_ID' org property with 'prj_' appended.
-INFO is a communication channel and is ignored"
-  (let ((id (org-element-property :TASK_ID project)))
-    (if id (format "prj_%s" id)
-      (error "ERROR: No project id found"))))
-
-(defun org-tj-add-to-server (file)
-  "Add tj3 project FILE to web server."
-  (call-process-shell-command
-   (format "tj3client -c /home/ndwar/.config/tj3/taskjugglerrc add %s" file)))
-
-(defun org-tj-load ()
-  "Load tj3 files to the taskjuggler daemon."
-  ;; TODO browse folders freely like dired
-  (interactive)
-  (let ((project-files
-         (->> (directory-files nd/org-export-publishing-directory t)
-              (--filter (equal (file-name-extension it t)
-                               org-tj-extension)))))
-    (helm
-     :sources
-     (list
-      (helm-build-sync-source "Project Files"
-        ;; TODO make these project ids
-        :candidates project-files
-        :action
-        ;; TODO add load and view using function below
-        '(("Load" . org-tj-add-to-server))))
-     :buffer "*helm taskjuggler buffer*"
-     :prompt "Project: ")))
-
-(defun org-tj-loaded-ids ()
-  "Get a list of loaded project id's from the taskjuggler daemon."
-  (-->
-   ;; assume --silent and /dev/null remove extraneous info
-   (shell-command-to-string
-    "tj3client -c /home/ndwar/.config/tj3/taskjugglerrc --silent status 2> /dev/null")
-   (s-split "\n" it t)
-   ;; assume the first two lines are headers
-   (-drop 2 it)
-   (--map (--> (s-split "|" it t) (nth 1 it) (s-trim it)) it)))
-
-(defun org-tj-loaded-projects ()
-  "Browse a loaded taskjuggler projects using helm."
-  (interactive)
-  (helm
-   :sources
-   (list
-    (helm-build-sync-source "Loaded Projects"
-      :candidates (org-tj-loaded-ids)
-      :action
-      '(("Open" . org-tj-open-id-in-browser)
-        ("Remove" .
-         (lambda (i)
-           (call-process-shell-command
-            (format
-             "tj3client -c /home/ndwar/.config/tj3/taskjugglerrc remove %s" i)))))))
-   :buffer "*helm taskjuggler buffer*"
-   :prompt "Project ID: "))
-
-(defun org-tj--get-project-headlines ()
-  "Return list of all org taskjuggler project headlines."
-  (--> (org-element-parse-buffer)
-       (org-element-map it 'headline
-         (lambda (hl)
-           (when (member org-tj-project-tag
-                         (org-element-property :tags hl))
-             hl)))
-       (org-element-map it 'headline #'identity)))
-
-(defun org-tj--get-resource-headlines (tree)
-  "Return list of all org taskjuggler resource headlines."
-  (--> (or tree (org-element-parse-buffer))
-       (org-element-map it 'headline
-         (lambda (hl)
-           (when (member org-tj-resource-tag
-                         (org-element-property :tags hl))
-             hl))
-         nil t)
-       (org-element-map it 'headline #'identity)
-       (--filter (org-element-property :RESOURCE_ID it) it)))
-
-(defun org-tj--get-task-ids (&optional headlines)
-  "Return a list of all ID's for tasks in TJ projects.
-Search through HEADLINES or all taskjuggler headlines in the buffer if
-not given."
-  (--> (or headlines (org-tj--get-project-headlines))
-       (--map
-        (org-element-property
-         (if org-tj-use-id-property :ID :TASK_ID) it)
-        it)
-       (-non-nil it)
-       (-uniq it)))
-
-(defun org-tj--in-project-p ()
-  "Check that the cursor is currently in a taskjuggler project."
-  (member org-tj-project-tag (org-get-tags-at)))
-
-(defun org-tj-set-id ()
-  "Set the id for the current task.
-Uniqueness is enforced within projects."
-  (interactive)
-  (unless (org-tj--in-project-p)
-    (error "Not in taskjuggler project tree"))
-  (let* ((unique-ids (org-tj--get-task-ids))
-         (default-id (->
-                      (save-excursion
-                        (org-back-to-heading)
-                        (org-element-context))
-                      (org-tj--build-unique-id unique-ids)))
-         (new-id (read-string
-                  (format "Set ID (default: %s): " default-id)
-                  nil nil default-id)))
-    (cond
-     ;; must be unique
-     ((member new-id unique-ids)
-      (error "ERROR: Non-unique ID given"))
-     ;; must not have whitespace
-     ((s-contains? " " new-id)
-      (error "ERROR: ID has whitespace"))
-     (t
-      (org-set-property
-       (if org-tj-use-id-property "ID" "TASK_ID")
-       new-id)))))
-
-(defun org-tj--get-dependencies ()
-  "Return list of dependencies for the current headline."
-  (-some->> (org-entry-get nil "DEPENDS") (s-split "[ ,]* +" )))
-
-(defun org-tj--get-resources ()
-  "Return list of dependencies for the current headline."
-  (-some->> (org-entry-get nil "ALLOCATE") (s-split "[ ,]* +" )))
-
-;; TODO this just deals with the DEPENDS property
-;; make also want to add blocker
-(defun org-tj-add-depends ()
-  "Set the depends property for a taskjuggler task.
-Will automatically create an ID to dependency if it does not exist."
-  (interactive)
-  (unless (org-tj--in-project-p)
-    (error "Not in taskjuggler project tree"))
-  (let* ((cur-deps (org-tj--get-dependencies))
-         (id-prop (if org-tj-use-id-property "ID" "TASK_ID"))
-         (tj-headlines
-          (->>
-           (org-tj--get-project-headlines)
-           ;; take out the current headline
-           (--remove (save-excursion
-                       (org-back-to-heading)
-                       (->> (org-element-context)
-                            (org-element-property :begin)
-                            (eq (org-element-property :begin it)))))
-           ;; take out headlines that have subheadlines
-           (--remove (< 0 (->
-                           (org-element-contents it)
-                           (org-element-map 'headline #'identity)
-                           length)))))
-         (unique-ids
-          (->> tj-headlines
-               (-reductions-from
-                (lambda (a b)
-                  (let ((unique-id (org-tj--build-unique-id b a)))
-                    (append a (list unique-id))))
-                nil)
-               (-drop 1)
-               (-map #'-last-item)))
-         (mk-display
-          (lambda (unique-id hl)
-            (let* ((hl-id (org-element-property id-prop hl))
-                   (text (org-element-property :raw-value hl)))
-              (if (equal unique-id hl-id) text
-                (concat text " (!)")))))
-         (hl-pos (--map (org-element-property :begin it) tj-headlines))
-         (disp (--zip-with (funcall mk-display it other)
-                           unique-ids tj-headlines))
-         (candidates (->> unique-ids (-zip-pair hl-pos) (-zip-pair disp))))
-    (helm
-     :sources
-     (list
-      (helm-build-sync-source "Link Targets"
-        :candidates (--remove (member (cddr it) cur-deps) candidates)
-        :action
-        `(("Link" .
-           (lambda (h)
-             (let ((id (cdr h))
-                   (begin (car h)))
-               ;; add to DEPENDS if there are existing
-               (cond
-                ((not ',cur-deps)
-                 (org-set-property "DEPENDS" id))
-                ((not (member id ',cur-deps))
-                 (->> id list (append ',cur-deps) (s-join " ")
-                      (org-set-property "DEPENDS"))))
-               ;; set the target id if not set already
-               (save-excursion
-                 (goto-char begin)
-                 (unless (equal id (org-entry-get nil ,id-prop))
-                   (org-set-property ,id-prop id))))))))
-      (helm-build-sync-source "Existing links"
-        :candidates (--filter (member (cddr it) cur-deps) candidates)
-        :action
-        `(("Unlink" .
-           (lambda (h)
-             (let ((new-deps (-remove-item (cdr h) ',cur-deps)))
-               (if new-deps
-                   (->> new-deps
-                        (s-join " ")
-                        (org-set-property "DEPENDS"))
-                 (org-entry-delete nil "DEPENDS"))))))))
-      :buffer "*helm taskjuggler buffer*"
-      :prompt "Project ID: ")))
-
-(defun org-tj-add-resource ()
-  "Add or remove resource from the current entry."
-  (interactive)
-  (unless (org-tj--in-project-p)
-    (error "Not in taskjuggler project tree"))
-  (let* ((cur-res-ids (org-tj--get-resources))
-         (id-prop (if org-tj-use-id-property "ID" "TASK_ID"))
-         (res-ids
-          (->>
-           (org-tj--get-resource-headlines)
-           ;; only need the headlines with resource_id's
-           (--map (org-element-property :RESOURCE_ID it))
-           -non-nil
-           -uniq)))
-    (helm
-     :sources
-     (list
-      (helm-build-sync-source "Link Targets"
-        :candidates (--remove (member it cur-res-ids) res-ids)
-        :action
-        `(("Link" .
-           (lambda (id)
-             (cond
-              ((not ',cur-res-ids)
-               (org-set-property "ALLOCATE" id))
-              ((not (member id ',cur-res-ids))
-               (->> id list (append ',cur-res-ids) (s-join " ")
-                    (org-set-property "ALLOCATE"))))))))
-     (helm-build-sync-source "Existing links"
-       :candidates (--filter (member it cur-res-ids) res-ids)
-       :action
-       `(("Unlink" .
-          (lambda (id)
-            (let ((new-res-ids (-remove-item id ',cur-res-ids)))
-              (if new-res-ids
-                  (->> new-res-ids
-                       (s-join " ")
-                       (org-set-property "ALLOCATE"))
-                (org-entry-delete nil "ALLOCATE"))))))))
-    :buffer "*helm taskjuggler buffer*"
-    :prompt "Project ID: ")))
-
-(defun org-tj-show-depends ()
-  (interactive)
-  (org-columns nil "%25ITEM %TASK_ID %DEPENDS"))
 
 (provide 'org-tj)
 ;;; org-tj.el ends here
