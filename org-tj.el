@@ -341,23 +341,7 @@ headlines and their associated ID."
           (push id ids)
           (cons resource id))))))
 
-
 ;;; Accessors
-
-(defun org-tj-get-project (tree)
-  "Return list of headlines marked with `org-tj-project-tag'.
-Only return the toplevel heading in a marked subtree. TREE is the
-parse tree of the buffer."
-  ;; TODO this is named poorly, really this is getting project metadata
-  ;; for the tj element named "project" ...it is not actually the
-  ;; project tasks
-  ;; TODO what if we have project tags in the subtree, we don't need
-  ;; those
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (->> (org-element-property :tags hl)
-                 (member org-tj-project-tag))
-        hl))))
 
 (defun org-tj-get-id (item ids)
   "Return id for task or resource ITEM and list of IDS."
@@ -386,7 +370,6 @@ ITEM is a headline.  Return value is a string or nil if ITEM
 doesn't have any end date defined."
   (let ((deadline (org-element-property :deadline item)))
     (and deadline (org-timestamp-format deadline "%Y-%02m-%02d"))))
-
 
 ;;; Internal Functions
 
@@ -600,167 +583,12 @@ doesn't include leading \"depends\"."
     ;; Return dependencies string, without the leading "depends".
     (mapconcat (lambda (dep) (funcall get-path dep)) dependencies ", ")))
 
-
 ;;; Translator Functions
-
-(defun org-tj--get-reports (tree)
-  "Return reports tree from TREE."
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (member org-tj-report-tag (org-element-property :tags hl))
-        hl))))
-
-(defun org-tj-project-plan (contents info)
-  "Build TaskJuggler project plan.
-CONTENTS is ignored.  INFO is a plist holding export options.
-Return complete project plan as a string in TaskJuggler syntax."
-  (let* ((tree (plist-get info :parse-tree))
-         ;; TODO return more than one tree if more than one tagged
-         (project (car (or (org-tj-get-project tree)
-                           (error "No project specified"))))
-         (main-resources (org-tj--get-resource-headlines tree))
-         (resource-ids (org-tj-assign-resource-ids main-resources))
-         (main-reports (org-tj--get-reports tree))
-         (main-tasks (org-tj-get-project tree))
-         ;; If `org-tj-keep-project-as-task' is
-         ;; non-nil, there is only one task.  Otherwise, every
-         ;; direct children of PROJECT is a top level task.
-         ;; (if org-tj-keep-project-as-task (list project)
-         ;;   (or (org-tj--subheadlines project)
-         ;;       (error "No task specified"))))
-         (task-ids (org-tj-assign-task-ids main-tasks info)))
-    (concat
-     ;; 1. Insert header.
-     (org-element-normalize-string org-tj-default-global-header)
-     ;; 2. Insert project.
-     (org-tj--build-project project info tree)
-     ;; 3. Insert global properties.
-     (org-element-normalize-string org-tj-default-global-properties)
-     ;; 4. Insert resources.  Provide a default one if none is
-     ;;    specified.
-     (if main-resources
-         (->> main-resources
-              (--map (org-tj--build-resource it info resource-ids))
-              (apply #'concat))
-       (format "resource %s \"%s\" {\n}\n" (user-login-name)
-               user-full-name))
-     ;; 5. Insert tasks.
-     (->> main-tasks
-          (--map
-           ;; If no resource is allocated among tasks, allocate one to
-           ;; the first task.
-           ;; TODO this will fail if we have two subtrees and one
-           ;; has an ALLOCATES drawer and the other does not
-           (let ((allocate
-                  (unless (org-element-map it 'headline
-                          (lambda (task)
-                            (-some->>
-                             (org-tj--drawer-by-name task "allocate")
-                             (org-tj--get-items)))
-                          nil t)
-                    (user-login-name))))
-             ;; TODO set better default resource
-             ;; (or (org-tj-get-id (car main-resources) resource-ids)
-             (org-tj--build-task it info task-ids tree allocate)))
-          (apply #'concat))
-     ;; 6. Insert reports.  If no report is defined, insert default
-     ;;    reports.
-     (if main-reports
-         (mapconcat
-          (lambda (report) (org-tj--build-report report))
-          main-reports "")
-       ;; insert title in default reports
-       (let* ((title (org-export-data (plist-get info :title) info))
-              (report-title (if (string= title "")
-                                (org-tj-get-name project)
-                              title)))
-         (mapconcat
-          'org-element-normalize-string
-          (--map
-           (replace-regexp-in-string "%title" report-title it t t)
-           org-tj-default-reports) ""))))))
-
-(defun org-tj--build-project (project info tree)
-  "Return a project declaration.
-PROJECT is a headline.  INFO is a plist used as a communication
-channel.  If no start date is specified, start today.  If no end
-date is specified, end `org-tj-default-project-duration'
-days from now."
-  (let* ((kws (org-tj--file-tj3-keywords tree))
-         (first-line
-          (format "project %s \"%s\" \"%s\" %s %s {\n"
-                  (or (alist-get 'id kws)
-                      (--> (plist-get info :input-buffer)
-                           (f-no-ext it)
-                           ;; TODO this is likely incomplete
-                           (s-replace "-" "_" it)))
-                  ;; TODO make up some name if none given
-                  (alist-get 'name kws)
-                  ;; Version is obtained through :TASKJUGGLER_VERSION:
-                  ;; property or `org-tj-default-project-version'.
-                  (or (alist-get 'version kws)
-                      org-tj-default-project-version)
-                  ;; TODO make these take org timestamps
-                  (or (alist-get 'start kws)
-                      (org-tj-get-start project)
-                      (format-time-string "%Y-%m-%d"))
-                  (or (alist-get 'end kws)
-                      (-some->> (org-tj-get-end project)
-                                (format "- %s" end))
-                      (format "+%sd" org-tj-default-project-duration))))
-         (orig-attrs (alist-get 'attribute kws))
-         (add-attrs
-          (--> org-tj-default-attributes
-               (--remove (assoc-string (car it) orig-attrs) it)))
-         (attrs (--> orig-attrs
-                     (append it add-attrs)
-                     (--map (format "%s %s\n" (car it) (cdr it)) it)
-                     (string-join it)
-                     (org-tj--indent-string it))))
-    ;; Closing project.
-    (concat first-line attrs "}\n")))
 
 (defun org-tj--subheadlines (hl)
   "Return subheadings under headline HL if any."
   (let ((hl-contents (org-element-contents hl)))
     (if (assoc 'section hl-contents) (cdr hl-contents) hl-contents)))
-
-(defun org-tj--build-resource (resource info resource-ids)
-  "Return a resource declaration.
-
-RESOURCE is a headline.  INFO is a plist used as a communication
-channel.
-
-All valid attributes from RESOURCE are inserted.  If RESOURCE
-defines a property \"resource_id\" it will be used as the id for
-this resource.  Otherwise it will use the ID property.  If
-neither is defined a unique id will be associated to it."
-  (concat
-   ;; Opening resource.
-   (format "resource %s \"%s\" {\n"
-           (org-tj--clean-id
-            (or (org-element-property :RESOURCE_ID resource)
-                (org-element-property :ID resource)
-                (org-tj-get-id resource resource-ids)))
-           (org-tj-get-name resource))
-   ;; Add attributes.
-   (org-tj--indent-string
-    (org-tj--build-attributes
-     resource org-tj-valid-resource-attributes))
-   ;; Add inner resources.
-   (->> (org-tj--subheadlines resource)
-        (--map (org-tj--build-resource it info resource-ids))
-        (apply #'concat)
-        org-tj--indent-string)
-   ;; (org-tj--indent-string
-   ;;  (mapconcat
-   ;;   'identity
-   ;;   (org-element-map (org-element-contents resource) 'headline
-   ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
-   ;;     nil nil 'headline)
-   ;;   ""))
-   ;; Closing resource.
-   "}\n"))
 
 (defun org-tj--get-items (element)
   "Get list of attributes from ELEMENT."
@@ -1029,64 +857,79 @@ neither is defined a unique id will be associated to it."
 (defconst org-tj--report-attributes-rich-text
   '(caption center epilog footer header headline left prolog right))
 
-(defun org-tj--build-report (hl)
-  "Create a task report definition."
-  ;; assume the incoming headline is indeed a valid report
-  (-if-let (type (org-element-property :REPORT_KIND hl))
-      (let* ((name (org-element-property :raw-value hl))
-             (id (org-element-property :CUSTOM_ID hl))
-             (rich-text
-              (-some-->
-               (org-element-contents hl)
-               (assq 'section it)
-               (org-element-contents it)
-               (org-element-map it 'src-block #'identity)
-               (--filter
-                (member
-                 (org-element-property :name it)
-                 (-map #'symbol-name org-tj--report-attributes-rich-text))
-                it)
-               (--map (cons (make-symbol (org-element-property :name it))
-                            (org-tj--src-to-rich-text it))
-                      it)))
-             (props
-              (-some->>
-               org-tj--report-attributes
-               (--map (cons it
-                            (--> it
-                                 (symbol-name it)
-                                 (concat ":" it)
-                                 (upcase it)
-                                 (intern it)
-                                 (org-element-property it hl))))
-               (--remove (not (cdr it)))))
-             (list-attrs
-              (-some-->
-               (org-element-contents hl)
-               (assq 'section it)
-               (org-element-map it 'drawer
-                 (lambda (d)
-                   (org-tj--indent-string
-                    (org-tj--parse-list-attribute d))))
-               (s-join "\n" it)))
-             (attrs
-              (-some->>
-               (append rich-text props)
-               ;; TODO add validation here?
-               (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
-               (-map #'org-tj--indent-string)
-               (apply #'concat)))
-             (inner-reports
-              (->> (org-tj--subheadlines hl)
-                   (--map (org-tj-create-report it))
-                   (apply #'concat)
-                   org-tj--indent-string)))
-        ;; TODO validate the report type and scream if wrong?
-        (if (not type) ""
-          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat attrs list-attrs)
-                  inner-reports)))
-    (error "Type not specified for headline: %s"
-           (org-element-property :raw-value hl))))
+(defun org-tj-get-project (tree)
+  "Return list of headlines marked with `org-tj-project-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  ;; TODO this is named poorly, really this is getting project metadata
+  ;; for the tj element named "project" ...it is not actually the
+  ;; project tasks
+  ;; TODO what if we have project tags in the subtree, we don't need
+  ;; those
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (when (->> (org-element-property :tags hl)
+                 (member org-tj-project-tag))
+        hl))))
+
+(defun org-tj--get-resource-headlines (tree)
+  "Return list of all org taskjuggler resource headlines."
+  (--> (or tree (org-element-parse-buffer))
+       (org-element-map it 'headline
+         (lambda (hl)
+           (when (member org-tj-resource-tag
+                         (org-element-property :tags hl))
+             hl))
+         nil t)
+       (org-element-map it 'headline #'identity)
+       (--filter (org-element-property :RESOURCE_ID it) it)))
+
+(defun org-tj--get-reports (tree)
+  "Return reports tree from TREE."
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (when (member org-tj-report-tag (org-element-property :tags hl))
+        hl))))
+
+(defun org-tj--build-project (project info tree)
+  "Return a project declaration.
+PROJECT is a headline.  INFO is a plist used as a communication
+channel.  If no start date is specified, start today.  If no end
+date is specified, end `org-tj-default-project-duration'
+days from now."
+  (let* ((kws (org-tj--file-tj3-keywords tree))
+         (first-line
+          (format "project %s \"%s\" \"%s\" %s %s {\n"
+                  (or (alist-get 'id kws)
+                      (--> (plist-get info :input-buffer)
+                           (f-no-ext it)
+                           ;; TODO this is likely incomplete
+                           (s-replace "-" "_" it)))
+                  ;; TODO make up some name if none given
+                  (alist-get 'name kws)
+                  ;; Version is obtained through :TASKJUGGLER_VERSION:
+                  ;; property or `org-tj-default-project-version'.
+                  (or (alist-get 'version kws)
+                      org-tj-default-project-version)
+                  ;; TODO make these take org timestamps
+                  (or (alist-get 'start kws)
+                      (org-tj-get-start project)
+                      (format-time-string "%Y-%m-%d"))
+                  (or (alist-get 'end kws)
+                      (-some->> (org-tj-get-end project)
+                                (format "- %s" end))
+                      (format "+%sd" org-tj-default-project-duration))))
+         (orig-attrs (alist-get 'attribute kws))
+         (add-attrs
+          (--> org-tj-default-attributes
+               (--remove (assoc-string (car it) orig-attrs) it)))
+         (attrs (--> orig-attrs
+                     (append it add-attrs)
+                     (--map (format "%s %s\n" (car it) (cdr it)) it)
+                     (string-join it)
+                     (org-tj--indent-string it))))
+    ;; Closing project.
+    (concat first-line attrs "}\n")))
 
 (defun org-tj--build-task (task info task-ids tree &optional allocate)
   "Return a task declaration.
@@ -1167,17 +1010,171 @@ a unique id will be associated to it."
      ;; Closing task.
      "}\n")))
 
-(defun org-tj--get-resource-headlines (tree)
-  "Return list of all org taskjuggler resource headlines."
-  (--> (or tree (org-element-parse-buffer))
-       (org-element-map it 'headline
-         (lambda (hl)
-           (when (member org-tj-resource-tag
-                         (org-element-property :tags hl))
-             hl))
-         nil t)
-       (org-element-map it 'headline #'identity)
-       (--filter (org-element-property :RESOURCE_ID it) it)))
+(defun org-tj--build-report (hl)
+  "Create a task report definition."
+  ;; assume the incoming headline is indeed a valid report
+  (-if-let (type (org-element-property :REPORT_KIND hl))
+      (let* ((name (org-element-property :raw-value hl))
+             (id (org-element-property :CUSTOM_ID hl))
+             (rich-text
+              (-some-->
+               (org-element-contents hl)
+               (assq 'section it)
+               (org-element-contents it)
+               (org-element-map it 'src-block #'identity)
+               (--filter
+                (member
+                 (org-element-property :name it)
+                 (-map #'symbol-name org-tj--report-attributes-rich-text))
+                it)
+               (--map (cons (make-symbol (org-element-property :name it))
+                            (org-tj--src-to-rich-text it))
+                      it)))
+             (props
+              (-some->>
+               org-tj--report-attributes
+               (--map (cons it
+                            (--> it
+                                 (symbol-name it)
+                                 (concat ":" it)
+                                 (upcase it)
+                                 (intern it)
+                                 (org-element-property it hl))))
+               (--remove (not (cdr it)))))
+             (list-attrs
+              (-some-->
+               (org-element-contents hl)
+               (assq 'section it)
+               (org-element-map it 'drawer
+                 (lambda (d)
+                   (org-tj--indent-string
+                    (org-tj--parse-list-attribute d))))
+               (s-join "\n" it)))
+             (attrs
+              (-some->>
+               (append rich-text props)
+               ;; TODO add validation here?
+               (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
+               (-map #'org-tj--indent-string)
+               (apply #'concat)))
+             (inner-reports
+              (->> (org-tj--subheadlines hl)
+                   (--map (org-tj-create-report it))
+                   (apply #'concat)
+                   org-tj--indent-string)))
+        ;; TODO validate the report type and scream if wrong?
+        (if (not type) ""
+          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat attrs list-attrs)
+                  inner-reports)))
+    (error "Type not specified for headline: %s"
+           (org-element-property :raw-value hl))))
+
+(defun org-tj--build-resource (resource info resource-ids)
+  "Return a resource declaration.
+
+RESOURCE is a headline.  INFO is a plist used as a communication
+channel.
+
+All valid attributes from RESOURCE are inserted.  If RESOURCE
+defines a property \"resource_id\" it will be used as the id for
+this resource.  Otherwise it will use the ID property.  If
+neither is defined a unique id will be associated to it."
+  (concat
+   ;; Opening resource.
+   (format "resource %s \"%s\" {\n"
+           (org-tj--clean-id
+            (or (org-element-property :RESOURCE_ID resource)
+                (org-element-property :ID resource)
+                (org-tj-get-id resource resource-ids)))
+           (org-tj-get-name resource))
+   ;; Add attributes.
+   (org-tj--indent-string
+    (org-tj--build-attributes
+     resource org-tj-valid-resource-attributes))
+   ;; Add inner resources.
+   (->> (org-tj--subheadlines resource)
+        (--map (org-tj--build-resource it info resource-ids))
+        (apply #'concat)
+        org-tj--indent-string)
+   ;; (org-tj--indent-string
+   ;;  (mapconcat
+   ;;   'identity
+   ;;   (org-element-map (org-element-contents resource) 'headline
+   ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
+   ;;     nil nil 'headline)
+   ;;   ""))
+   ;; Closing resource.
+   "}\n"))
+
+(defun org-tj-project-plan (contents info)
+  "Build TaskJuggler project plan.
+CONTENTS is ignored.  INFO is a plist holding export options.
+Return complete project plan as a string in TaskJuggler syntax."
+  (let* ((tree (plist-get info :parse-tree))
+         ;; TODO return more than one tree if more than one tagged
+         (project (car (or (org-tj-get-project tree)
+                           (error "No project specified"))))
+         (main-resources (org-tj--get-resource-headlines tree))
+         (resource-ids (org-tj-assign-resource-ids main-resources))
+         (main-reports (org-tj--get-reports tree))
+         (main-tasks (org-tj-get-project tree))
+         ;; If `org-tj-keep-project-as-task' is
+         ;; non-nil, there is only one task.  Otherwise, every
+         ;; direct children of PROJECT is a top level task.
+         ;; (if org-tj-keep-project-as-task (list project)
+         ;;   (or (org-tj--subheadlines project)
+         ;;       (error "No task specified"))))
+         (task-ids (org-tj-assign-task-ids main-tasks info)))
+    (concat
+     ;; 1. Insert header.
+     (org-element-normalize-string org-tj-default-global-header)
+     ;; 2. Insert project.
+     (org-tj--build-project project info tree)
+     ;; 3. Insert global properties.
+     (org-element-normalize-string org-tj-default-global-properties)
+     ;; 4. Insert resources.  Provide a default one if none is
+     ;;    specified.
+     (if main-resources
+         (->> main-resources
+              (--map (org-tj--build-resource it info resource-ids))
+              (apply #'concat))
+       (format "resource %s \"%s\" {\n}\n" (user-login-name)
+               user-full-name))
+     ;; 5. Insert tasks.
+     (->> main-tasks
+          (--map
+           ;; If no resource is allocated among tasks, allocate one to
+           ;; the first task.
+           ;; TODO this will fail if we have two subtrees and one
+           ;; has an ALLOCATES drawer and the other does not
+           (let ((allocate
+                  (unless (org-element-map it 'headline
+                          (lambda (task)
+                            (-some->>
+                             (org-tj--drawer-by-name task "allocate")
+                             (org-tj--get-items)))
+                          nil t)
+                    (user-login-name))))
+             ;; TODO set better default resource
+             ;; (or (org-tj-get-id (car main-resources) resource-ids)
+             (org-tj--build-task it info task-ids tree allocate)))
+          (apply #'concat))
+     ;; 6. Insert reports.  If no report is defined, insert default
+     ;;    reports.
+     (if main-reports
+         (mapconcat
+          (lambda (report) (org-tj--build-report report))
+          main-reports "")
+       ;; insert title in default reports
+       (let* ((title (org-export-data (plist-get info :title) info))
+              (report-title (if (string= title "")
+                                (org-tj-get-name project)
+                              title)))
+         (mapconcat
+          'org-element-normalize-string
+          (--map
+           (replace-regexp-in-string "%title" report-title it t t)
+           org-tj-default-reports) ""))))))
 
 ;;; export functions
 
