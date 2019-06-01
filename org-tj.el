@@ -826,8 +826,10 @@ neither is defined a unique id will be associated to it."
              ((memq type '(plain-text italic bold underline
                                       superscript subscript))
               (funcall parse-text elem type))
-             ;; treat code, verbatim, and timestamps as literals
-             ((memq type '(code timestamp))
+             ;; format code as monospaced text
+             ((eq type 'code) (funcall parse-code elem))
+             ;; keep the text of timestamps as-is
+             ((eq type 'timestamp)
               (funcall parse-value elem))
              ;; horizontal rules are just four dashes
              ((eq type 'horizontal-rule) "----\n")
@@ -856,6 +858,10 @@ neither is defined a unique id will be associated to it."
         (lambda (verbatim)
           (->> (org-element-property :value verbatim)
                (format "<nowiki>%s</nowiki>"))))
+       (parse-code
+        (lambda (code)
+          (->> (org-element-property :value code)
+               (format "''''%s''''"))))
        (parse-contents
         (lambda (obj)
           (->> (org-element-contents obj)
