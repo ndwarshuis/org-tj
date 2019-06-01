@@ -262,30 +262,32 @@ task buckets, while still sharing the same resources pool."
   :group 'org-export-taskjuggler
   :type 'boolean)
 
-
 ;;; Hooks
 
 (defvar org-tj-final-hook nil
   "Hook run after a TaskJuggler files has been saved.
 This hook is run with the name of the file as argument.")
 
+;;; macros
 
-;;; Back-End Definition
+;; (defmacro org-tj--with-advice (adlist &rest body)
+;;   "Execute BODY with temporary advice in ADLIST.
 
-(org-export-define-backend 'taskjuggler
-  '((template . org-tj-project-plan))
-  :menu-entry
-  '(?J "Export to TaskJuggler"
-       ((?j "As TJP file" (lambda (a s v b) (org-tj-export a s v)))
-	(?p "As TJP file and process"
-	    (lambda (a s v b)
-	      (if a (org-tj-export a s v)
-		(org-tj-export-and-process s v))))
-	(?o "As TJP file, process and open"
-	    (lambda (a s v b)
-	      (if a (org-tj-export a s v)
-		(org-tj-export-process-and-open s v)))))))
-
+;; Each element of ADLIST should be a list of the form
+;;   (SYMBOL WHERE FUNCTION [PROPS])
+;; suitable for passing to `advice-add'.  The BODY is wrapped in an
+;; `unwind-protect' form, so the advice will be removed even in the
+;; event of an error or nonlocal exit."
+;;   (declare (debug ((&rest (&rest form)) body))
+;;            (indent 1))
+;;   `(progn
+;;      ,@(mapcar (lambda (adform)
+;;                  (cons 'advice-add adform))
+;;                adlist)
+;;      (unwind-protect (progn ,@body)
+;;        ,@(mapcar (lambda (adform)
+;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
+;;                  adlist))))
 
 ;;; Unique IDs
 
@@ -1165,73 +1167,6 @@ a unique id will be associated to it."
      ;; Closing task.
      "}\n")))
 
-(defun org-tj--collect-errors (buffer)
-  "Collect some kind of errors from \"tj3\" command output.
-
-BUFFER is the buffer containing output.
-
-Return collected error types as a string, or nil if there was
-none."
-  (with-current-buffer buffer
-    (save-excursion
-      (goto-char (point-min))
-      (let ((case-fold-search t)
-	    (errors ""))
-	(while (re-search-forward "^.+:[0-9]+: \\(.*\\)$" nil t)
-	  (setq errors (concat errors " " (match-string 1))))
-	(and (org-string-nw-p errors) (org-trim errors))))))
-
-;; (defmacro org-tj--with-advice (adlist &rest body)
-;;   "Execute BODY with temporary advice in ADLIST.
-
-;; Each element of ADLIST should be a list of the form
-;;   (SYMBOL WHERE FUNCTION [PROPS])
-;; suitable for passing to `advice-add'.  The BODY is wrapped in an
-;; `unwind-protect' form, so the advice will be removed even in the
-;; event of an error or nonlocal exit."
-;;   (declare (debug ((&rest (&rest form)) body))
-;;            (indent 1))
-;;   `(progn
-;;      ,@(mapcar (lambda (adform)
-;;                  (cons 'advice-add adform))
-;;                adlist)
-;;      (unwind-protect (progn ,@body)
-;;        ,@(mapcar (lambda (adform)
-;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
-;;                  adlist))))
-
-(defun org-tj--cmd (type &rest args)
-  "Return formatted shell command string for TYPE.
-ARGS are strings appended to the end of the command."
-  (-->
-   (cl-case type
-     (client "tj3client")
-     (deamon "tj3d")
-     (web "tj3webd")
-     (t (error "Unknown command type: %s" type)))
-   (list it)
-   (append it (list "--silent" "--no-color"))
-   (append it args)
-   (if (not org-tj-config-file) it
-     (-insert-at 1 (concat "-c " org-tj-config-file) it))
-   (s-join " " it)))
-
-(defun org-tj-open-id-in-browser (id)
-  "Open project ID in the default web browser."
-  (browse-url
-   (format
-    ;; TODO make port a variable
-    "http://localhost:8081/taskjuggler?project=%s;report=report" id)))
-
-(defun org-tj-open-in-browser (file)
-  "Open tj3 FILE in the default web browser."
-  ;; TODO check if project is loaded and load if not loaded
-  ;; if it is loaded throw a warning
-  (--> (with-temp-buffer (insert-file-contents file) (buffer-string))
-       (s-match "project \\([^[:space:]]+\\) " it)
-       (nth 1 it)
-       (org-tj-open-id-in-browser it)))
-
 (defun org-tj--get-resource-headlines (tree)
   "Return list of all org taskjuggler resource headlines."
   (--> (or tree (org-element-parse-buffer))
@@ -1244,7 +1179,21 @@ ARGS are strings appended to the end of the command."
        (org-element-map it 'headline #'identity)
        (--filter (org-element-property :RESOURCE_ID it) it)))
 
-;; interactive functions
+;;; export functions
+
+(org-export-define-backend 'taskjuggler
+  '((template . org-tj-project-plan))
+  :menu-entry
+  '(?J "Export to TaskJuggler"
+       ((?j "As TJP file" (lambda (a s v b) (org-tj-export a s v)))
+	(?p "As TJP file and process"
+	    (lambda (a s v b)
+	      (if a (org-tj-export a s v)
+		(org-tj-export-and-process s v))))
+	(?o "As TJP file, process and open"
+	    (lambda (a s v b)
+	      (if a (org-tj-export a s v)
+		(org-tj-export-process-and-open s v)))))))
 
 ;;;###autoload
 (defun org-tj-export (&optional async subtreep visible-only)
@@ -1288,6 +1237,95 @@ Return output file's name."
       (lambda (file)
 	(run-hook-with-args 'org-tj-final-hook file) nil))))
 
+(defun org-tj-open-id-in-browser (id)
+  "Open project ID in the default web browser."
+  (browse-url
+   (format
+    ;; TODO make port a variable
+    "http://localhost:8081/taskjuggler?project=%s;report=report" id)))
+
+(defun org-tj-open-in-browser (file)
+  "Open tj3 FILE in the default web browser."
+  ;; TODO check if project is loaded and load if not loaded
+  ;; if it is loaded throw a warning
+  (--> (with-temp-buffer (insert-file-contents file) (buffer-string))
+       (s-match "project \\([^[:space:]]+\\) " it)
+       (nth 1 it)
+       (org-tj-open-id-in-browser it)))
+
+;;;###autoload
+(defun org-tj-export-process-and-open (&optional subtreep visible-only)
+  "Export current buffer to a TaskJuggler file, process and open it.
+
+Export and process the file using
+`org-tj-export-and-process' and open the generated
+reports with a browser."
+  (interactive)
+  (let ((reports (org-tj-export-and-process subtreep visible-only)))
+    (dolist (report reports)
+      (org-tj-open-in-browser report))))
+
+(defun org-tj--cmd (type &rest args)
+  "Return formatted shell command string for TYPE.
+ARGS are strings appended to the end of the command."
+  (-->
+   (cl-case type
+     (client "tj3client")
+     (deamon "tj3d")
+     (web "tj3webd")
+     (t (error "Unknown command type: %s" type)))
+   (list it)
+   (append it (list "--silent" "--no-color"))
+   (append it args)
+   (if (not org-tj-config-file) it
+     (-insert-at 1 (concat "-c " org-tj-config-file) it))
+   (s-join " " it)))
+
+(defun org-tj--collect-errors (buffer)
+  "Collect some kind of errors from \"tj3\" command output.
+
+BUFFER is the buffer containing output.
+
+Return collected error types as a string, or nil if there was
+none."
+  (with-current-buffer buffer
+    (save-excursion
+      (goto-char (point-min))
+      (let ((case-fold-search t)
+	    (errors ""))
+	(while (re-search-forward "^.+:[0-9]+: \\(.*\\)$" nil t)
+	  (setq errors (concat errors " " (match-string 1))))
+	(and (org-string-nw-p errors) (org-trim errors))))))
+
+(defun org-tj--load (file)
+  "Load a TaskJuggler file.
+FILE is the name of the file being loaded.  Processing is done
+through the command given in `org-tj-process-command'.
+Return a list of reports."
+  (let* ((full-name (file-truename file))
+         (out-dir
+          (expand-file-name
+           org-tj-reports-directory (file-name-directory file)))
+         errors)
+    (message (format "Processing TaskJuggler file %s..." file))
+    (save-window-excursion
+      (let ((outbuf (get-buffer-create "*Org Taskjuggler Output*")))
+        (with-current-buffer outbuf (erase-buffer))
+        (--> (org-tj--cmd 'client "add" "%f")
+             (replace-regexp-in-string
+              "%o" (shell-quote-argument out-dir)
+              it t t)
+             (replace-regexp-in-string
+              "%f" (shell-quote-argument full-name)
+              it t t)
+             (shell-command it outbuf))
+        ;; Collect standard errors from output buffer.
+        (setq errors (org-tj--collect-errors outbuf)))
+      (if (not errors)
+          (message "Process completed.")
+        (error (format "TaskJuggler failed with errors: %s" errors))))
+    (file-expand-wildcards (format "%s/*.html" out-dir))))
+
 ;;;###autoload
 (defun org-tj-export-and-process (&optional subtreep visible-only)
   "Export current buffer to a TaskJuggler file and process it.
@@ -1324,47 +1362,6 @@ Return a list of reports."
     ;; TODO this is a silly hack
     ;; return file as list
     (list file)))
-
-;;;###autoload
-(defun org-tj-export-process-and-open (&optional subtreep visible-only)
-  "Export current buffer to a TaskJuggler file, process and open it.
-
-Export and process the file using
-`org-tj-export-and-process' and open the generated
-reports with a browser."
-  (interactive)
-  (let ((reports (org-tj-export-and-process subtreep visible-only)))
-    (dolist (report reports)
-      (org-tj-open-in-browser report))))
-
-(defun org-tj--load (file)
-  "Load a TaskJuggler file.
-FILE is the name of the file being loaded.  Processing is done
-through the command given in `org-tj-process-command'.
-Return a list of reports."
-  (let* ((full-name (file-truename file))
-         (out-dir
-          (expand-file-name
-           org-tj-reports-directory (file-name-directory file)))
-         errors)
-    (message (format "Processing TaskJuggler file %s..." file))
-    (save-window-excursion
-      (let ((outbuf (get-buffer-create "*Org Taskjuggler Output*")))
-        (with-current-buffer outbuf (erase-buffer))
-        (--> (org-tj--cmd 'client "add" "%f")
-             (replace-regexp-in-string
-              "%o" (shell-quote-argument out-dir)
-              it t t)
-             (replace-regexp-in-string
-              "%f" (shell-quote-argument full-name)
-              it t t)
-             (shell-command it outbuf))
-        ;; Collect standard errors from output buffer.
-        (setq errors (org-tj--collect-errors outbuf)))
-      (if (not errors)
-          (message "Process completed.")
-        (error (format "TaskJuggler failed with errors: %s" errors))))
-    (file-expand-wildcards (format "%s/*.html" out-dir))))
 
 ;; TODO use this function in a separate compile export path
 ;; (defun org-tj-compile (file)
