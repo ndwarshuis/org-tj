@@ -314,20 +314,6 @@ means they only need to be unique among the task siblings."
                    (-drop 1)
                    (-map #'-last-item))))
     (--zip-with (cons it other) hls ids)))
-;; this function doesn't work with lexical scoping
-;; (let* (alist
-;;    build-id			; For byte-compiler.
-;;        (build-id
-;;         (lambda (tasks local-ids)
-;;           (org-element-map tasks 'headline
-;;             (lambda (task)
-;;               (let ((id (org-tj--build-unique-id task local-ids)))
-;;                 (push id local-ids)
-;;                 (push (cons task id) alist)
-;;                 (funcall build-id (org-element-contents task) nil)))
-;;             info nil 'headline))))
-;;   (funcall build-id tasks nil)
-;;   alist))
 
 (defun org-tj--assign-resource-ids (resources)
   "Assign a unique ID to each resource within RESOURCES.
