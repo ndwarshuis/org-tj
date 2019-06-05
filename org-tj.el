@@ -547,35 +547,37 @@ doesn't include leading \"depends\"."
             org-element-contents
             car
             s-trim
-            substring-no-properties))
+            make-symbol))
 
 (defun org-tj--parse-list-attribute (drawer)
   "Convert DRAWER to list attribute."
   (letrec
       ;; TODO validate name of attribute
-      ((name (downcase (org-element-property :drawer-name drawer)))
-       (items (org-tj--get-items drawer))
-       (parse-item
+      ((name (-> (org-element-property :drawer-name drawer)
+                 downcase
+                 make-symbol))
+       ;; TODO make this recursive
+       (parse-attrs
+        (lambda (items)
+          (--map
+           (-if-let (key (-some->>
+                          (org-element-property :tag it)
+                          car make-symbol))
+               (cons key (org-tj--get-item-text it))
+             (funcall parse-name it))
+           items)))
+       (parse-name
         (lambda (item)
-          (let ((column (org-tj--get-item-text item))
-                ;; TODO some list attributes don't have their own
-                ;; attributes, validate that maybe?
-                (attrs
-                 (-some-->
-                  (org-tj--get-items item)
-                  (--map
-                   (let ((key (->> (org-element-property :tag it)
-                                   car
-                                   substring-no-properties))
-                         (val (org-tj--get-item-text it)))
-                     (format "%s \"%s\"" key val))
-                   it)
-                  (s-join ", " it))))
-            (if attrs (format "%s { %s }" column attrs) column)))))
-    (->> items
-         (--map (funcall parse-item it))
-         (s-join ", ")
-         (format "%s %s" name))))
+          ;; TODO some list attributes don't have their own
+          ;; attributes, validate that maybe?
+          (let ((name (org-tj--get-item-text item))
+                (attrs (->> (org-tj--get-items item)
+                            (funcall parse-attrs))))
+            (if attrs (cons name attrs) (list name))))))
+    (->> (org-tj--get-items drawer)
+         (--map (funcall parse-name it))
+         (apply #'append)
+         (cons name))))
 
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
