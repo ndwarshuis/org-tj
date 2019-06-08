@@ -88,6 +88,13 @@ the project."
   :group 'org-export-taskjuggler
   :type 'string)
 
+(defcustom org-tj-shift-tag "tj3_shift"
+  "Tag marking project's shifts.
+This tag is used to find the tree containing all the tasks for
+the project."
+  :group 'org-export-taskjuggler
+  :type 'string)
+
 (defcustom org-tj-resource-tag "tj3_resource"
   "Tag marking project's resources.
 This tag is used to find the tree containing all the resources
@@ -408,44 +415,127 @@ ID is a string."
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
+
+(defun org-tj--file-keywords-list-format (keywords key &optional
+                                                   alt-key bracket?)
+  (-if-let (list (-some-->
+                  (--filter (equal key (car it)) keywords)
+                  (-map #'cdr it)
+                  (if bracket? (format "{ %s }" (s-join " " it))
+                    (s-join ", " it))))
+      (format "%s %s\n" (or alt-key (downcase key)) list)
+    ""))
+
+(defun org-tj--file-keywords-first-format (keywords key &optional
+                                                     alt-key
+                                                     default-val)
+  (-if-let (val (or (alist-get key keywords nil nil #'equal)
+                    default-val))
+      (format "%s %s\n" (or alt-key (downcase key)) val)
+    ""))
+
+(defun org-tj--file-keywords-all-format (keywords key &optional
+                                                     alt-key)
+  (or (-some->>
+       (--filter (equal key (car it)) keywords)
+       (-map #'cdr)
+       (--map (format "%s %s\n" (or alt-key (downcase key)) it))
+       (s-join ""))
+      ""))
+
 (defun org-tj--file-tj3-keywords (tree)
   "Return toplevel taskjuggler file keywords from buffer parse TREE."
-  (-when-let (kws
-              (->> tree
-                   org-element-contents
-                   (assoc 'section)
-                   org-element-contents
-                   (--filter (and (eq 'keyword (org-element-type it))
-                                  (-> (org-element-property :key it)
-                                      (substring 0 4)
-                                      (equal "TJ3_"))))
-                   (--group-by (org-element-property :key it))
-                   (--map (cons
-                           (-> (car it)
-                               (substring 4)
-                               downcase
-                               intern) ; intern here to make eq work
-                           (--map (org-element-property :value it)
-                                  (cdr it))))))
-    (let ((split-attrs
-           (->> (alist-get 'attribute kws)
-                ;; TODO validate the attributes
-                (--map (let ((a (s-split-up-to " " it 1)))
-                         (cons (-> (car a) downcase intern)
-                               (car (cdr a))))))))
-      (--map (let ((kw (car it))
-                   (val (cdr it)))
-               (cons kw
-                     (cond
-                      ;; if there are any repeats in these keep the
-                      ;; first value only
-                      ((memq kw '(name version id start end))
-                       (car val))
-                      ;; replace the attributes with the split version
-                      ((eq kw 'attribute)
-                       split-attrs)
-                      (t (error "Unknown taskjuggler keyword: %s" kw)))))
-             kws))))
+  (->> tree
+       org-element-contents
+       (assoc 'section)
+       org-element-contents
+       (--filter (and (eq 'keyword (org-element-type it))
+                      (-> (org-element-property :key it)
+                          (substring 0 4)
+                          (equal "TJ3_"))))
+       (--map (cons (substring (org-element-property :key it) 4)
+                    (org-element-property :value it)))))
+
+(defun org-tj--file-project-keywords (keywords)
+  (->> (--filter (s-starts-with? "PROJ_" (car it)) keywords)
+       (--map (cons (s-chop-prefix "PROJ_" (car it))
+                    (cdr it)))))
+
+(defun org-tj--file-project-id (project-keywords info)
+  (let ((alt-id (--> (plist-get info :input-buffer)
+                     (f-no-ext it)
+                     ;; TODO this is likely incomplete
+                     (s-replace "-" "_" it))))
+    (alist-get "ID" project-keywords alt-id nil #'equal)))
+
+(defun org-tj--file-project-version (project-keywords)
+  (alist-get "VERSION" project-keywords
+             org-tj-default-project-version nil #'equal))
+
+(defun org-tj--file-project-name (project-keywords)
+  (alist-get "NAME" project-keywords "" nil #'equal))
+
+(defun org-tj--file-project-start (project-keywords tasks)
+  ;; TODO the first task may not have a start date
+  ;; TODO convert org timestamps to tj3 format
+  (let ((default (or (org-tj--get-start (car tasks))
+                     (format-time-string "%Y-%m-%d"))))
+    (alist-get "START" project-keywords default nil #'equal)))
+
+(defun org-tj--file-project-end (project-keywords tasks)
+  ;; TODO the first task may not have an date
+  ;; TODO convert org timestamps to tj3 format
+  (let ((default (or (-some->> (org-tj--get-end (car tasks))
+                               (format "- %s"))
+                     (format "+%sd" org-tj-default-project-duration))))
+    (alist-get "END" project-keywords default nil #'equal)))
+
+(defun org-tj--file-project-attributes (project-keywords)
+  ;; TODO set the default for this
+  (let* ((file-attrs
+          (->> (--filter (equal "ATTRIBUTE" (car it)) project-keywords)
+               (-map #'cdr)
+               (--map (let ((s (s-split-up-to " " it 1 t)))
+                        (cons (car s) (car (cdr s)))))))
+         (default-attrs
+           (--> org-tj-default-attributes
+                (--remove (assoc-string (car it) file-attrs) it))))
+    (->> (append file-attrs default-attrs)
+         (--map (format "%s %s" (car it) (cdr it)))
+         (s-join "\n"))))
+
+(defun org-tj--file-copyright (keywords)
+  ;; TODO add default
+  (org-tj--file-keywords-first-format keywords "COPYRIGHT" nil ""))
+
+(defun org-tj--file-balance (keywords)
+  ;; TODO add default
+  (org-tj--file-keywords-first-format keywords "BALANCE" nil ""))
+
+(defun org-tj--file-rate (keywords)
+  ;; TODO add default
+  (org-tj--file-keywords-first-format keywords "RATE" nil ""))
+
+(defun org-tj--file-navigator (keywords)
+  (-if-let (nav (-some-->
+                   (alist-get "NAVIGATOR" keywords "" nil #'equal)
+                   (s-split " " it t)))
+      (cl-case (length nav)
+        (1 (format "navigator %s\n" (nth 0 nav)))
+        (2 (format "navigator %s { %s }\n" (nth 0 nav) (nth 1 nav)))
+        (t (error "Invalid navbar specification: %s" nav)))
+    ""))
+
+(defun org-tj--file-vacation-format (keywords)
+  (org-tj--file-keywords-all-format keywords "VACATION"))
+
+(defun org-tj--file-flags-format (keywords)
+  (org-tj--file-keywords-list-format keywords "FLAG" "flags"))
+
+;; TODO this actually needs to be in {}
+(defun org-tj--file-limits-format (keywords)
+  (org-tj--file-keywords-list-format keywords "LIMIT" "limits" t))
+
 
 ;;; Dependencies
 
@@ -815,6 +905,18 @@ parse tree of the buffer."
                  (member org-tj-project-tag))
         hl))))
 
+(defun org-tj--get-shifts (tree)
+  "Return list of headlines marked with `org-tj-project-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  ;; TODO what if we have shift tags in the subtree, we don't need
+  ;; those
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (when (->> (org-element-property :tags hl)
+                 (member org-tj-shift-tag))
+        hl))))
+
 (defun org-tj--get-resource-headlines (tree)
   "Return list of all org taskjuggler resource headlines."
   (--> (or tree (org-element-parse-buffer))
@@ -834,44 +936,60 @@ parse tree of the buffer."
       (when (member org-tj-report-tag (org-element-property :tags hl))
         hl))))
 
-(defun org-tj--build-project (tasks info tree)
+(defun org-tj--build-project (keywords info tasks)
   "Return a project declaration.
 PROJECT is a headline.  INFO is a plist used as a communication
 channel.  If no start date is specified, start today.  If no end
 date is specified, end `org-tj-default-project-duration'
 days from now."
-  (let* ((kws (org-tj--file-tj3-keywords tree))
-         (id (or (alist-get 'id kws)
-                 (--> (plist-get info :input-buffer)
-                      (f-no-ext it)
-                      ;; TODO this is likely incomplete
-                      (s-replace "-" "_" it))))
-         ;; TODO make up some name if none given
-         (name (alist-get 'name kws))
-         ;; Version is obtained through :TASKJUGGLER_VERSION:
-         ;; property or `org-tj-default-project-version'.
-         (version (or (alist-get 'version kws)
-                      org-tj-default-project-version))
-         ;; TODO make start and end take org timestamps
-         (start (or (alist-get 'start kws)
-                    ;; TODO get the start date of the first defined
-                    ;; task?
-                    (org-tj--get-start (car tasks))
-                    (format-time-string "%Y-%m-%d")))
-         (end (or (alist-get 'end kws)
-                  (-some->> (org-tj--get-end (car tasks))
-                            (format "- %s"))
-                  (format "+%sd" org-tj-default-project-duration)))
-         (orig-attrs (alist-get 'attribute kws))
-         (add-attrs
-          (--> org-tj-default-attributes
-               (--remove (assoc-string (car it) orig-attrs) it)))
-         (attrs (->> (append orig-attrs add-attrs)
-                     (--map (format "%s %s" (car it) (cdr it)))
-                     (s-join "\n")
-                     (org-tj--indent-string))))
+  (let* ((proj-kws (org-tj--file-project-keywords keywords))
+         (id (org-tj--file-project-id proj-kws info))
+         (name (org-tj--file-project-name proj-kws))
+         (version (org-tj--file-project-version proj-kws))
+         (start (org-tj--file-project-start proj-kws tasks))
+         (end (org-tj--file-project-end proj-kws tasks))
+         (attrs (org-tj--indent-string
+                 (org-tj--file-project-attributes proj-kws))))
     (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
             id name version start end attrs)))
+
+(defun org-tj--build-shift (shift info shift-ids tree &optional leaves)
+  "Return a shift declaration."
+  (let* ((id (org-tj--get-id shift shift-ids))
+         (name (org-tj--get-name shift))
+         (leaves (or leaves
+                     (-some->>
+                      (org-tj--drawer-by-name shift "leaves")
+                      (org-tj--get-items)
+                      (-map #'org-tj--get-item-text)
+                      (s-join ", "))))
+         ;; TODO replace needs something like 'milestone' where
+         ;; some property activates the presence of the word 'replace'
+         (timezone (-some->>
+                    (org-element-property :TIMEZONE shift)
+                    (format "timezone %s")))
+         (vacation (-some->>
+                    (org-element-property :VACATION shift)
+                    (format "vacation %s")))
+         (workinghours (-some->>
+                        (org-element-property :WORKINGHOURS shift)
+                        (format "workinghours %s")))
+         (inner-shifts
+          (-some->>
+           (org-tj--subheadlines shift)
+           ;; skip over any inner shifts that have an ignore tag
+           (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+           (--map (org-tj--build-shift it info tree))
+           (apply #'concat)))
+         (attrs
+          (-some->>
+           (list leaves timezone vacation workinghours inner-shifts)
+           (-non-nil)
+           (s-join "\n")
+           (org-tj--indent-string))))
+    (print timezone)
+    (if (not attrs) (format "shift %s \"%s\"\n" id name)
+      (format "shift %s \"%s\" {\n%s\n}\n" id name attrs))))
 
 (defun org-tj--build-task (task info task-ids tree &optional allocate)
   "Return a task declaration.
@@ -1053,26 +1171,38 @@ neither is defined a unique id will be associated to it."
 INFO is a plist holding export options. Return formatted string in 
 taskjuggler syntax."
   (let* ((tree (plist-get info :parse-tree))
+         (keywords (org-tj--file-tj3-keywords tree))
          (tasks (org-tj--get-tasks tree))
          (task-ids (org-tj--assign-task-ids tasks info))
+         (shifts (org-tj--get-shifts tree))
+         ;; TODO temporary hack, *task-ids should give the desired
+         ;; behavior
+         (shift-ids (org-tj--assign-task-ids shifts info))
          (resources (org-tj--get-resource-headlines tree))
          (resource-ids (org-tj--assign-resource-ids resources))
          (reports (org-tj--get-reports tree)))
     (concat
-     ;; 1. Insert header.
-     (org-element-normalize-string org-tj-default-global-header)
-     ;; 2. Insert project.
-     (org-tj--build-project tasks info tree)
-     ;; 3. Insert global properties.
-     (org-element-normalize-string org-tj-default-global-properties)
-     ;; 4. Insert resources.  Provide a default one if none is
-     ;;    specified.
+     ;; insert project
+     (org-tj--build-project keywords info tasks)
+     ;; insert global properties
+     ;; (org-element-normalize-string org-tj-default-global-properties)
+     (org-tj--file-navigator keywords)
+     (org-tj--file-copyright keywords)
+     (org-tj--file-rate keywords)
+     (org-tj--file-limits-format keywords)
+     (org-tj--file-vacation-format keywords)
+     (org-tj--file-flags-format keywords)
+     ;; insert resources; provide a default one if none is specified
      (if resources
          (->> resources
               (--map (org-tj--build-resource it info resource-ids))
               (apply #'concat))
        (format "resource %s \"%s\" {\n}\n" (user-login-name)
                user-full-name))
+     ;; insert shifts
+     (->> shifts
+          (--map (org-tj--build-shift it info shift-ids tree))
+          (apply #'concat))
      ;; 5. Insert tasks.
      (->> tasks
           (--map
