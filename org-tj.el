@@ -88,6 +88,13 @@ the project."
   :group 'org-export-taskjuggler
   :type 'string)
 
+(defcustom org-tj-account-tag "tj3_acnt"
+  "Tag marking project's accounts.
+This tag is used to find the tree containing all the tasks for
+the project."
+  :group 'org-export-taskjuggler
+  :type 'string)
+
 (defcustom org-tj-shift-tag "tj3_shift"
   "Tag marking project's shifts.
 This tag is used to find the tree containing all the tasks for
@@ -905,6 +912,18 @@ parse tree of the buffer."
                  (member org-tj-project-tag))
         hl))))
 
+(defun org-tj--get-accounts (tree)
+  "Return list of headlines marked with `org-tj-account-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  ;; TODO what if we have shift tags in the subtree, we don't need
+  ;; those
+  (org-element-map tree 'headline
+    (lambda (hl)
+      (when (->> (org-element-property :tags hl)
+                 (member org-tj-account-tag))
+        hl))))
+
 (defun org-tj--get-shifts (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
@@ -953,6 +972,40 @@ days from now."
     (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
             id name version start end attrs)))
 
+(defun org-tj--build-account (account info account-ids tree)
+  "Return an account declaration."
+  (let* ((id (org-tj--get-id account account-ids))
+         (name (org-tj--get-name account))
+         (credits (-some->>
+                  (org-tj--drawer-by-name account "credits")
+                  (org-tj--get-items)
+                  (-map #'org-tj--get-item-text)
+                  (s-join ", ")))
+         (aggregate (-some->>
+                     (org-element-property :AGGREGATE account)
+                     (format "aggregate %s")))
+         (balance (-some->>
+                    (org-element-property :CREDITS account)
+                    (format "credits %s")))
+         (flags (-some->>
+                    (org-element-property :FLAGS account)
+                    (format "flags %s")))
+         (inner-accounts
+          (-some->>
+           (org-tj--subheadlines account)
+           ;; skip over any inner accounts that have an ignore tag
+           (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+           (--map (org-tj--build-account it info account-ids tree))
+           (apply #'concat)))
+         (attrs
+          (-some->>
+           (list credits aggregate balance inner-accounts)
+           (-non-nil)
+           (s-join "\n")
+           (org-tj--indent-string))))
+    (if (not attrs) (format "account %s \"%s\"\n" id name)
+      (format "account %s \"%s\" {\n%s\n}\n" id name attrs))))
+
 (defun org-tj--build-shift (shift info shift-ids tree &optional leaves)
   "Return a shift declaration."
   (let* ((id (org-tj--get-id shift shift-ids))
@@ -979,7 +1032,7 @@ days from now."
            (org-tj--subheadlines shift)
            ;; skip over any inner shifts that have an ignore tag
            (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-           (--map (org-tj--build-shift it info tree))
+           (--map (org-tj--build-shift it info shift-ids tree))
            (apply #'concat)))
          (attrs
           (-some->>
@@ -987,7 +1040,6 @@ days from now."
            (-non-nil)
            (s-join "\n")
            (org-tj--indent-string))))
-    (print timezone)
     (if (not attrs) (format "shift %s \"%s\"\n" id name)
       (format "shift %s \"%s\" {\n%s\n}\n" id name attrs))))
 
@@ -1174,6 +1226,8 @@ taskjuggler syntax."
          (keywords (org-tj--file-tj3-keywords tree))
          (tasks (org-tj--get-tasks tree))
          (task-ids (org-tj--assign-task-ids tasks info))
+         (accounts (org-tj--get-accounts tree))
+         (account-ids (org-tj--assign-task-ids tasks info))
          (shifts (org-tj--get-shifts tree))
          ;; TODO temporary hack, *task-ids should give the desired
          ;; behavior
@@ -1199,6 +1253,10 @@ taskjuggler syntax."
               (apply #'concat))
        (format "resource %s \"%s\" {\n}\n" (user-login-name)
                user-full-name))
+     ;; insert accounts
+     (->> accounts
+          (--map (org-tj--build-account it info account-ids tree))
+          (apply #'concat))
      ;; insert shifts
      (->> shifts
           (--map (org-tj--build-shift it info shift-ids tree))
