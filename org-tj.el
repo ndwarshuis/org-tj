@@ -305,41 +305,56 @@ This hook is run with the name of the file as argument.")
 
 ;;; Unique IDs
 
-(defun org-tj--assign-task-ids (tasks _info)
-  "Assign a unique ID to each task in TASKS.
-TASKS is a list of headlines.  INFO is a plist used as a
-communication channel.  Return value is an alist between
-headlines and their associated ID.  IDs are hierarchical, which
-means they only need to be unique among the task siblings."
-  ;; TODO this makes all ids globally unique, not bad but might be
-  ;; a reason the original didn't do it seeing as this is way easier?
-  ;; TODO anything with an ignore tag is not taken into account here
-  ;; not a huge deal but will make the id's neater in the case of
-  ;; collisions with ignored ids
-  (let* ((hls (->> tasks
-                   (--map (org-element-map it 'headline #'identity))
-                   (apply #'append)))
-         (ids (->> hls
-                   (-reductions-from
-                    (lambda (a b)
-                      (let ((unique-id (org-tj--build-unique-id b a)))
-                        (append a (list unique-id))))
-                    nil)
-                   (-drop 1)
-                   (-map #'-last-item))))
-    (--zip-with (cons it other) hls ids)))
+(defun org-tj--filter-headlines (headlines)
+  "Return HEADLINES that do not have `org-tj-ignore-tag'."
+  (--remove (->> (org-element-property :tags it)
+                 (member org-tj-ignore-tag))
+            headlines))
 
-(defun org-tj--assign-resource-ids (resources)
-  "Assign a unique ID to each resource within RESOURCES.
-RESOURCES is a list of headlines.  INFO is a plist used as a
-communication channel.  Return value is an alist between
-headlines and their associated ID."
-  (let (ids)
-    (org-element-map resources 'headline
-      (lambda (resource)
-        (let ((id (org-tj--build-unique-id resource ids)))
-          (push id ids)
-          (cons resource id))))))
+(defun org-tj--generate-ids (headlines)
+  "Generate list of unique ids from HEADLINES."
+  (->> headlines
+       (-reductions-from
+        (lambda (a b)
+          (let ((unique-id (org-tj--build-unique-id b a)))
+            ;; TODO this is inefficient (building list
+            ;; backwards)
+            (append a (list unique-id))))
+        nil)
+       (-drop 1)
+       (-map #'-last-item)))
+
+(defun org-tj--assign-global-ids (headlines)
+  "Assign a globally unique ID to each in HEADLINES.
+HEADLINES is a list of headlines which may contain subheadlines.
+Return value is an alist between headlines and their associated ID."
+  (cl-labels
+      ((filter-headlines
+        (hs)
+        (-when-let (filtered-hs (org-tj--filter-headlines hs))
+          (->> (--map (filter-headlines (org-tj--subheadlines it))
+                      filtered-hs)
+               (apply #'append)
+               (append filtered-hs)))))
+    (let ((filtered-headlines (filter-headlines headlines)))
+      (->> (org-tj--generate-ids filtered-headlines)
+           (--zip-with (cons it other) filtered-headlines)))))
+
+(defun org-tj--assign-local-ids (headlines)
+  "Assign a locally unique ID to each in HEADLINES.
+HEADLINES is a list of headlines which may contain subheadlines.
+Return value is an alist between headlines and their associated ID.
+IDs are hierarchical, which means are unique only among the task
+siblings."
+  (let* ((filtered-headlines (org-tj--filter-headlines headlines))
+         (inner-ids
+          (->> filtered-headlines
+               (--map (->> (org-tj--subheadlines it)
+                           (org-tj--assign-local-ids)))
+               (apply #'append))))
+    (->> (org-tj--generate-ids filtered-headlines)
+         (--zip-with (cons it other) filtered-headlines)
+         (append inner-ids))))
 
 ;;; Accessors
 
@@ -1155,15 +1170,13 @@ taskjuggler syntax."
   (let* ((tree (plist-get info :parse-tree))
          (keywords (org-tj--file-tj3-keywords tree))
          (tasks (org-tj--get-tasks tree))
-         (task-ids (org-tj--assign-task-ids tasks info))
+         (task-ids (org-tj--assign-local-ids tasks))
          (accounts (org-tj--get-accounts tree))
-         (account-ids (org-tj--assign-task-ids tasks info))
+         (account-ids (org-tj--assign-global-ids tasks))
          (shifts (org-tj--get-shifts tree))
-         ;; TODO temporary hack, *task-ids should give the desired
-         ;; behavior
-         (shift-ids (org-tj--assign-task-ids shifts info))
+         (shift-ids (org-tj--assign-global-ids shifts))
          (resources (org-tj--get-resource-headlines tree))
-         (resource-ids (org-tj--assign-resource-ids resources))
+         (resource-ids (org-tj--assign-global-ids resources))
          (reports (org-tj--get-reports tree)))
     (concat
      ;; insert project
