@@ -40,6 +40,123 @@
 (require 'ox)
 (eval-when-compile (require 'cl-lib))
 
+;;; constants
+
+(defconst org-tj--report-attributes-rich-text
+  '(caption center epilog footer header headline left prolog right))
+
+(defconst org-tj--property-attributes
+  '((report
+     ;; :TJ3_accountreport (not fully tested)
+     :TJ3_ACCOUNTROOT
+     ;; :TJ3_auxdir (not fully tested)
+     :TJ3_BALANCE
+     :TJ3_COLUMNS
+     :TJ3_CURRENCYFORMAT
+     :TJ3_END
+     ;; :TJ3_EXPORT (not implemented)
+     :TJ3_FLAGS
+     :TJ3_FORMATS
+     :TJ3_HEIGHT
+     :TJ3_HIDEACCOUNT
+     :TJ3_HIDEJOURNALENTRY
+     :TJ3_HIDERESOURCE
+     :TJ3_HIDETASK
+     :TJ3_JOURNALATTRIBUTES
+     :TJ3_JOURNALMODE
+     :TJ3_LOADUNIT
+     :TJ3_NUMBERFORMAT
+     ;; :TJ3_OPENNODES (internal use only)
+     :TJ3_PERIOD
+     :TJ3_PURGE
+     :TJ3_RAWHTMLHEAD
+     :TJ3_RESOURCEREPORT
+     :TJ3_ROLLUPACCOUNT
+     :TJ3_ROLLUPRESOURCE
+     :TJ3_ROLLUPTASK
+     :TJ3_SCENARIOS
+     :TJ3_SELFCONTAINED
+     :TJ3_SORTACCOUNTS
+     :TJ3_SORTJOURNALENTRIES
+     :TJ3_SORTRESOURCES
+     :TJ3_SORTTASKS
+     :TJ3_START
+     :TJ3_TASKREPORT
+     :TJ3_TASKROOT
+     :TJ3_TEXTREPORT
+     :TJ3_TIMEFORMAT
+     :TJ3_TIMEZONE
+     :TJ3_TITLE
+     ;; :TJ3_TRACEREPORT (not implemented)
+     :TJ3_WIDTH)
+    (task
+     ;; :TJ3_ADOPT (experimental)
+     :TJ3_ALLOCATE
+     :TJ3_BOOKING
+     :TJ3_CHARGE
+     :TJ3_CHARGESET
+     :TJ3_COMPLETE
+     :TJ3_DEPENDS
+     :TJ3_DURATION
+     :TJ3_EFFORT
+     ;; :TJ3_EFFORTDONE (not fully tested)
+     :TJ3_EFFORTLEFT
+     :TJ3_END
+     :TJ3_FAIL
+     :TJ3_FLAGS
+     :TJ3_JOURNALENTRY
+     :TJ3_LENGTH
+     :TJ3_LIMITS
+     :TJ3_MAXEND
+     :TJ3_MAXSTART
+     ;; :TJ3_MILESTONE (handled elsewhere)
+     :TJ3_MINEND
+     :TJ3_MINSTART
+     :TJ3_NOTE
+     :TJ3_PERIOD
+     :TJ3_PRECEDES
+     :TJ3_PRIORITY
+     :TJ3_PROJECTID
+     :TJ3_PURGE
+     :TJ3_RESPONSIBLE
+     :TJ3_SCHEDULED
+     :TJ3_SCHEDULING
+     :TJ3_SCHEDULINGMODE
+     ;; :TJ3_SUPPLEMENT (not implemented, useless here)
+     :TJ3_SHIFTS
+     :TJ3_START
+     :TJ3_WARN)
+    (shift
+     :TJ3_LEAVES
+     :TJ3_REPLACE
+     :TJ3_TIMEZONE
+     :TJ3_VACATION
+     :TJ3_WORKINGHOURS)
+    (account
+     :TJ3_AGGREGATE
+     :TJ3_CREDITS
+     :TJ3_FLAGS)
+    (resource
+     :TJ3_BOOKING
+     :TJ3_CHARGESET
+     :TJ3_EFFICIENCY
+     :TJ3_EMAIL
+     :TJ3_FAIL
+     :TJ3_FLAGS
+     :TJ3_JOURNALENTRY
+     ;; :TJ3_LEAVEALLOWANCE (not fully tested)
+     :TJ3_LEAVES
+     :TJ3_LIMITS
+     :TJ3_MANAGERS
+     :TJ3_PURGE
+     :TJ3_RATE
+     :TJ3_SHIFTS
+     ;; :TJ3_SUPPLEMENT (not implemented, useless here)
+     :TJ3_VACATION
+     :TJ3_WARN
+     :TJ3_WORKINGHOURS))
+  "Taskjuggler attributes that are valid as headline properties.")
+
 ;;; User Variables
 
 (defgroup org-tj3 nil
@@ -208,48 +325,6 @@ but before any resource and task declarations."
   :group 'org-export-taskjuggler
   :type '(string :tag "Preamble"))
 
-(defcustom org-tj-valid-task-attributes
-  '(account start note duration endbuffer endcredit end
-	    flags journalentry length limits maxend maxstart minend
-	    minstart period reference responsible scheduling
-	    startbuffer startcredit statusnote chargeset charge)
-  "Valid attributes for Taskjuggler tasks.
-If one of these appears as a property for a headline, it will be
-exported with the corresponding task.
-
-Note that multiline properties are not supported, so attributes
-like note or journalentry have to be on a single line."
-  :group 'org-export-taskjuggler)
-
-(defcustom org-tj-valid-project-attributes
-  '(timingresolution timezone alertlevels currency currencyformat
-  dailyworkinghours extend includejournalentry now numberformat
-  outputdir scenario shorttimeformat timeformat trackingscenario
-  weekstartsmonday weekstartssunday workinghours
-  yearlyworkingdays)
-  "Valid attributes for Taskjuggler project.
-If one of these appears as a property for a headline that is a
-project definition, it will be exported with the corresponding
-task. Attribute 'timingresolution' should be the first in the
-list."
-  :group 'org-export-taskjuggler)
-
-(defcustom org-tj-valid-resource-attributes
-  '(limits vacation shift booking efficiency journalentry rate
-	   workinghours flags)
-  "Valid attributes for Taskjuggler resources.
-If one of these appears as a property for a headline, it will be
-exported with the corresponding resource."
-  :group 'org-export-taskjuggler)
-
-(defcustom org-tj-valid-report-attributes
-  '(headline columns definitions timeformat hideresource hidetask
-	     loadunit sorttasks formats period)
-  "Valid attributes for Taskjuggler reports.
-If one of these appears as a property for a headline, it will be
-exported with the corresponding report."
-  :group 'org-export-taskjuggler)
-
 (defcustom org-tj-process-command
   "tj3 --silent --no-color --output-dir %o %f"
   "Command to process a Taskjuggler file.
@@ -376,8 +451,7 @@ doesn't have any start date defined."
   (let ((scheduled (org-element-property :scheduled item)))
     (or
      (and scheduled (org-timestamp-format scheduled "%Y-%02m-%02d"))
-     (and (memq 'start org-tj-valid-task-attributes)
-	  (org-element-property :START item)))))
+     (org-element-property :START item))))
 
 (defun org-tj--get-end (item)
   "Return end date for task or resource ITEM.
@@ -393,19 +467,24 @@ doesn't have any end date defined."
 Return new string.  If S is the empty string, return it."
   (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
 
-(defun org-tj--build-attributes (item attributes)
-  "Return attributes string for ITEM.
-ITEM is a project, task, resource or report headline.  ATTRIBUTES
-is a list of symbols representing valid attributes for ITEM."
-  (mapconcat
-   (lambda (attribute)
-     (-when-let (value (--> attribute
-                            (format ":%s" it)
-                            (upcase it)
-                            (intern it)
-                            (org-element-property it item)))
-       (format "%s %s\n" attribute value)))
-   (remq nil attributes) ""))
+(defun org-tj--keyword-to-attribute (keyword)
+  "Return attribute KEYWORD as a formatted string.
+KEYWORD is assumed to be like :TJ3_attribute."
+  (->> keyword symbol-name (s-chop-prefix ":TJ3_") downcase))
+
+(defun org-tj--build-attributes (headline attributes)
+  "Return attributes string for HEADLINE.
+ATTRIBUTES is a list of symbols representing valid attributes
+for HEADLINE as keywords."
+  ;; TODO add validation here for attributes in headline that start
+  ;; with TJ3_ but are not valid
+  (->> attributes
+       (--map (-when-let (value (org-element-property it headline))
+                (format "%s %s\n"
+                        (org-tj--keyword-to-attribute it)
+                        value)))
+       (-non-nil)
+       (s-join "")))
 
 (defun org-tj--build-unique-id (item unique-ids)
   "Return a unique id for a given task or a resource.
@@ -804,66 +883,6 @@ doesn't include leading \"depends\"."
         (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
       (format "'%s'" rich-text))))
 
-(defconst org-tj--report-attributes
-  (list
-   ;; 'accountreport (not fully tested)
-   'accountroot
-   ;; 'auxdir (not fully tested)
-   'balance
-   ;; 'columns
-   'currencyformat
-   'end
-   'export
-   ;; 'flags
-   'formats
-   'height
-   'hideaccount
-   'hidejournalentry
-   'hideresource
-   'hidetask
-   'journalattributes
-   'journalmode
-   'loadunit
-   'numberformat
-   'opennodes
-   'period
-   'purge
-   'rawhtmlhead
-   'resourcereport
-   'rollupaccount
-   'rollupresource
-   'rolluptask
-   'scenarios
-   'selfcontained
-   'sortaccounts
-   'sortjournalentries
-   'sortresources
-   'sorttasks
-   'start
-   'taskreport
-   'taskroot
-   'textreport
-   'timeformat
-   'timezone
-   'title
-   'tracereport
-   'width)
-  "Attributes for accountreport, resourcereport, textreport, and taskreport.")
-
-(defconst org-tj--list-attributes
-  (list
-   'allocate
-   'columns
-   'depends
-   'flags
-   'limits
-   'precedes
-   'shifts)
-  "A list of taskjuggler list attributes")
-               
-(defconst org-tj--report-attributes-rich-text
-  '(caption center epilog footer header headline left prolog right))
-
 (defun org-tj--get-tasks (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
@@ -1057,8 +1076,9 @@ a unique id will be associated to it."
      ;; Add other valid attributes.
      ;; TODO this can be cleaned up
      (org-tj--indent-string
-      (let* ((orig-attributes (org-tj--build-attributes
-                               task org-tj-valid-task-attributes))
+      (let* ((orig-attributes
+              (->> (alist-get 'task org-tj--property-attributes)
+                   (org-tj--build-attributes task)))
              (start (-some->>
                      (org-tj--get-start task)
                      (format "start %s\n")))
@@ -1098,18 +1118,15 @@ a unique id will be associated to it."
                       it)))
              (props
               (-some->>
-               org-tj--report-attributes
-               (--map (cons it
-                            (--> it
-                                 (symbol-name it)
-                                 (concat ":" it)
-                                 (upcase it)
-                                 (intern it)
-                                 (org-element-property it hl))))
-               (--remove (not (cdr it)))))
+               org-tj--property-attributes
+               (alist-get 'report)
+               (org-tj--build-attributes hl)
+               (org-tj--indent-string)))
+               ;; (--map (cons it (org-element-property it hl)))
+               ;; (--remove (not (cdr it)))))
              (attrs
               (-some->>
-               (append rich-text props)
+               (append rich-text)
                ;; TODO add validation here?
                (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
                (-map #'org-tj--indent-string)
@@ -1121,12 +1138,12 @@ a unique id will be associated to it."
                    org-tj--indent-string)))
         ;; TODO validate the report type and scream if wrong?
         (if (not type) ""
-          (format "%s %s \"%s\" {\n%s%s}\n" type id name attrs
+          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat props attrs)
                   inner-reports)))
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
 
-(defun org-tj--build-resource (resource info resource-ids)
+(defun org-tj--build-resource (resource _info resource-ids)
   "Return a resource declaration.
 
 RESOURCE is a headline.  INFO is a plist used as a communication
@@ -1145,12 +1162,12 @@ neither is defined a unique id will be associated to it."
                 (org-tj--get-id resource resource-ids)))
            (org-tj--get-name resource))
    ;; Add attributes.
-   (org-tj--indent-string
-    (org-tj--build-attributes
-     resource org-tj-valid-resource-attributes))
+   (->> (alist-get 'resource org-tj--property-attributes)
+        (org-tj--build-attributes resource)
+        (org-tj--indent-string))
    ;; Add inner resources.
    (->> (org-tj--subheadlines resource)
-        (--map (org-tj--build-resource it info resource-ids))
+        (--map (org-tj--build-resource it nil resource-ids))
         (apply #'concat)
         org-tj--indent-string)
    ;; (org-tj--indent-string
