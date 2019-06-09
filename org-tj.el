@@ -546,24 +546,14 @@ ID is a string."
 
 ;;; Dependencies
 
-(defun org-tj--drawer-by-name (hl name)
-  "Return first drawer with NAME from headline HL."
-  (-some--> (org-element-contents hl)
-            (assq 'section it)
-            (org-element-map it 'drawer #'identity)
-            (--first (->> (org-element-property :drawer-name it)
-                          upcase
-                          (equal (upcase name)))
-                     it)))
-
 (defun org-tj--resolve-dependencies (task _info tree)
   "Return a list of all tasks on which TASK depends."
   ;; TODO add blocker eventually, baby steps
-  (let* ((deps-ids
-          (-some->>
-           (org-tj--drawer-by-name task "depends")
-           org-tj--get-items
-           (-map #'org-tj--get-item-text)))
+  (let* ((deps-ids (-some->>
+                    (org-element-property :DEPENDS task)
+                    (s-replace-regexp "{.*}" "")
+                    (s-split ",")
+                    (-map #'s-trim)))
          (wants-prev-sibling?
           (and
            (member-ignore-case "previous-sibling" deps-ids)
@@ -632,47 +622,6 @@ doesn't include leading \"depends\"."
   "Return subheadings under headline HL if any."
   (let ((hl-contents (org-element-contents hl)))
     (if (assoc 'section hl-contents) (cdr hl-contents) hl-contents)))
-
-(defun org-tj--get-items (element)
-  "Get list of attributes from ELEMENT."
-  (-when-let (contents (org-element-contents element))
-    (org-element-map contents 'item #'identity nil nil 'item)))
-
-(defun org-tj--get-item-text (item)
-  "Return the text of an ITEM."
-  (-some->> (assq 'paragraph item)
-            org-element-contents
-            car
-            s-trim
-            substring-no-properties))
-
-(defun org-tj--parse-list-attribute (drawer)
-  "Convert DRAWER to list attribute."
-  (letrec
-      ;; TODO validate name of attribute
-      ((name (downcase (org-element-property :drawer-name drawer)))
-       (items (org-tj--get-items drawer))
-       (parse-item
-        (lambda (item)
-          (let ((column (org-tj--get-item-text item))
-                ;; TODO some list attributes don't have their own
-                ;; attributes, validate that maybe?
-                (attrs
-                 (-some-->
-                  (org-tj--get-items item)
-                  (--map
-                   (let ((key (->> (org-element-property :tag it)
-                                   car
-                                   substring-no-properties))
-                         (val (org-tj--get-item-text it)))
-                     (format "%s \"%s\"" key val))
-                   it)
-                  (s-join ", " it))))
-            (if attrs (format "%s { %s }" column attrs) column)))))
-    (->> items
-         (--map (funcall parse-item it))
-         (s-join ", ")
-         (format "%s %s" name))))
 
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
@@ -977,10 +926,8 @@ days from now."
   (let* ((id (org-tj--get-id account account-ids))
          (name (org-tj--get-name account))
          (credits (-some->>
-                  (org-tj--drawer-by-name account "credits")
-                  (org-tj--get-items)
-                  (-map #'org-tj--get-item-text)
-                  (s-join ", ")))
+                   (org-element-property :CREDITS account)
+                   (format "credits %s")))
          (aggregate (-some->>
                      (org-element-property :AGGREGATE account)
                      (format "aggregate %s")))
@@ -1006,16 +953,13 @@ days from now."
     (if (not attrs) (format "account %s \"%s\"\n" id name)
       (format "account %s \"%s\" {\n%s\n}\n" id name attrs))))
 
-(defun org-tj--build-shift (shift info shift-ids tree &optional leaves)
+(defun org-tj--build-shift (shift info shift-ids tree)
   "Return a shift declaration."
   (let* ((id (org-tj--get-id shift shift-ids))
          (name (org-tj--get-name shift))
-         (leaves (or leaves
-                     (-some->>
-                      (org-tj--drawer-by-name shift "leaves")
-                      (org-tj--get-items)
-                      (-map #'org-tj--get-item-text)
-                      (s-join ", "))))
+         (leaves (-some->>
+                  (org-element-property :LEAVES shift)
+                  (format "leaves %s")))
          ;; TODO replace needs something like 'milestone' where
          ;; some property activates the presence of the word 'replace'
          (timezone (-some->>
@@ -1053,12 +997,7 @@ All valid attributes from TASK are inserted.  If TASK defines
 a property \"task_id\" it will be used as the id for this task.
 Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
-  (let* ((allocate (or allocate
-                       (-some->>
-                        (org-tj--drawer-by-name task "allocate")
-                        (org-tj--get-items)
-                        (-map #'org-tj--get-item-text)
-                        (s-join ", "))))
+  (let* ((allocate (or allocate (org-element-property :ALLOCATE task)))
          (complete
           (if (eq (org-element-property :todo-type task) 'done) "100"
             (org-element-property :COMPLETE task)))
@@ -1153,15 +1092,6 @@ a unique id will be associated to it."
                                  (intern it)
                                  (org-element-property it hl))))
                (--remove (not (cdr it)))))
-             (list-attrs
-              (-some-->
-               (org-element-contents hl)
-               (assq 'section it)
-               (org-element-map it 'drawer
-                 (lambda (d)
-                   (org-tj--indent-string
-                    (org-tj--parse-list-attribute d))))
-               (s-join "\n" it)))
              (attrs
               (-some->>
                (append rich-text props)
@@ -1176,7 +1106,7 @@ a unique id will be associated to it."
                    org-tj--indent-string)))
         ;; TODO validate the report type and scream if wrong?
         (if (not type) ""
-          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat attrs list-attrs)
+          (format "%s %s \"%s\" {\n%s%s}\n" type id name attrs
                   inner-reports)))
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
@@ -1266,15 +1196,11 @@ taskjuggler syntax."
           (--map
            ;; If no resource is allocated among tasks, allocate one to
            ;; the first task.
-           ;; TODO this will fail if we have two subtrees and one
-           ;; has an ALLOCATES drawer and the other does not
            (let ((allocate
                   (unless (org-element-map it 'headline
-                          (lambda (task)
-                            (-some->>
-                             (org-tj--drawer-by-name task "allocate")
-                             (org-tj--get-items)))
-                          nil t)
+                            (lambda (task)
+                              (org-element-property :ALLOCATE task)
+                          nil t))
                     (user-login-name))))
              ;; TODO set better default resource
              ;; (or (org-tj--get-id (car resources) resource-ids)
