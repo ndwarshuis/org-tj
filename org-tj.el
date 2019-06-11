@@ -48,113 +48,123 @@
 (defconst org-tj--property-attributes
   '((report
      ;; :TJ3_accountreport (not fully tested)
-     :TJ3_ACCOUNTROOT
-     ;; :TJ3_auxdir (not fully tested)
-     :TJ3_BALANCE
-     :TJ3_COLUMNS
-     :TJ3_CURRENCYFORMAT
-     :TJ3_END
-     ;; :TJ3_EXPORT (not implemented)
-     :TJ3_FLAGS
-     :TJ3_FORMATS
-     :TJ3_HEIGHT
-     :TJ3_HIDEACCOUNT
-     :TJ3_HIDEJOURNALENTRY
-     :TJ3_HIDERESOURCE
-     :TJ3_HIDETASK
-     :TJ3_JOURNALATTRIBUTES
-     :TJ3_JOURNALMODE
-     :TJ3_LOADUNIT
-     :TJ3_NUMBERFORMAT
-     ;; :TJ3_OPENNODES (internal use only)
-     :TJ3_PERIOD
-     :TJ3_PURGE
-     :TJ3_RAWHTMLHEAD
-     :TJ3_RESOURCEREPORT
-     :TJ3_ROLLUPACCOUNT
-     :TJ3_ROLLUPRESOURCE
-     :TJ3_ROLLUPTASK
-     :TJ3_SCENARIOS
-     :TJ3_SELFCONTAINED
-     :TJ3_SORTACCOUNTS
-     :TJ3_SORTJOURNALENTRIES
-     :TJ3_SORTRESOURCES
-     :TJ3_SORTTASKS
-     :TJ3_START
-     :TJ3_TASKREPORT
-     :TJ3_TASKROOT
-     :TJ3_TEXTREPORT
-     :TJ3_TIMEFORMAT
-     :TJ3_TIMEZONE
-     :TJ3_TITLE
-     ;; :TJ3_TRACEREPORT (not implemented)
-     :TJ3_WIDTH)
+     (accountroot . :TJ3_ACCOUNTROOT)
+     ;; . :TJ3_auxdir (not fully tested)
+     (balance . :TJ3_BALANCE)
+     (caption . org-tj--get-caption)
+     (center . org-tj--get-center)
+     (columns . :TJ3_COLUMNS)
+     (currencyformat . :TJ3_CURRENCYFORMAT)
+     (end . org-tj--get-end)
+     (epilog . org-tj--get-epilog)
+     ;; . :TJ3_EXPORT (not implemented)
+     (flags . :TJ3_FLAGS)
+     (footer . org-tj--get-footer)
+     (format . :TJ3_FORMATS)
+     (header . org-tj--get-header)
+     (headline . org-tj-get--headline)
+     (height . :TJ3_HEIGHT)
+     (hideaccount . :TJ3_HIDEACCOUNT)
+     (hidejournalentry . :TJ3_HIDEJOURNALENTRY)
+     (hideresource . :TJ3_HIDERESOURCE)
+     (hidetask . :TJ3_HIDETASK)
+     (journalattributes . :TJ3_JOURNALATTRIBUTES)
+     (journalmode . :TJ3_JOURNALMODE)
+     (left . org-tj--get-left)
+     (loadunit . :TJ3_LOADUNIT)
+     (numberformat . :TJ3_NUMBERFORMAT)
+     ;; . :TJ3_OPENNODES (internal use only)
+     (period . :TJ3_PERIOD)
+     (prolog . org-tj--get-prolog)
+     (purge . :TJ3_PURGE)
+     (rawhtmlhead . :TJ3_RAWHTMLHEAD)
+     ;; . :TJ3_RESOURCEREPORT (handled elsewhere)
+     (right . org-tj--get-right)
+     (rollupaccount . :TJ3_ROLLUPACCOUNT)
+     (rollupresource . :TJ3_ROLLUPRESOURCE)
+     (rolluptask . :TJ3_ROLLUPTASK)
+     (scenarios . :TJ3_SCENARIOS)
+     (selfcontained . :TJ3_SELFCONTAINED)
+     (sortaccounts . :TJ3_SORTACCOUNTS)
+     (sortjournalentries . :TJ3_SORTJOURNALENTRIES)
+     (sortresources . :TJ3_SORTRESOURCES)
+     (sorttasks . :TJ3_SORTTASKS)
+     (start . org-tj--get-start)
+     ;; . :TJ3_TASKREPORT (handled elsewhere)
+     (taskroot . :TJ3_TASKROOT)
+     ;; . :TJ3_TEXTREPORT (handled elsewhere)
+     (timeformat . :TJ3_TIMEFORMAT)
+     (timezone . :TJ3_TIMEZONE)
+     (title . :TJ3_TITLE)
+     ;; . :TJ3_TRACEREPORT (not implemented)
+     (width . :TJ3_WIDTH))
     (task
-     ;; :TJ3_ADOPT (experimental)
-     :TJ3_ALLOCATE
-     :TJ3_BOOKING
-     :TJ3_CHARGE
-     :TJ3_CHARGESET
-     :TJ3_COMPLETE
-     :TJ3_DEPENDS
-     :TJ3_DURATION
-     :TJ3_EFFORT
-     ;; :TJ3_EFFORTDONE (not fully tested)
-     :TJ3_EFFORTLEFT
-     :TJ3_END
-     :TJ3_FAIL
-     :TJ3_FLAGS
-     :TJ3_JOURNALENTRY
-     :TJ3_LENGTH
-     :TJ3_LIMITS
-     :TJ3_MAXEND
-     :TJ3_MAXSTART
-     ;; :TJ3_MILESTONE (handled elsewhere)
-     :TJ3_MINEND
-     :TJ3_MINSTART
-     :TJ3_NOTE
-     :TJ3_PERIOD
-     :TJ3_PRECEDES
-     :TJ3_PRIORITY
-     :TJ3_PROJECTID
-     :TJ3_PURGE
-     :TJ3_RESPONSIBLE
-     :TJ3_SCHEDULED
-     :TJ3_SCHEDULING
-     :TJ3_SCHEDULINGMODE
-     ;; :TJ3_SUPPLEMENT (not implemented, useless here)
-     :TJ3_SHIFTS
-     :TJ3_START
-     :TJ3_WARN)
+     ;; . :TJ3_ADOPT (experimental)
+     (allocate . :TJ3_ALLOCATE)
+     (booking . :TJ3_BOOKING)
+     (charge . :TJ3_CHARGE)
+     (chargeset . :TJ3_CHARGESET)
+     (complete . org-tj--get-complete)
+     (depends . org-tj--get-depends)
+     (duration . :TJ3_DURATION)
+     (effort . org-tj--get-effort)
+     ;; . :TJ3_EFFORTDONE (not fully tested)
+     ;; . :TJ3_EFFORTLEFT (not fully tested)
+     (end . org-tj--get-end)
+     (fail . :TJ3_FAIL)
+     (flags . :TJ3_FLAGS)
+     (journalentry . :TJ3_JOURNALENTRY)
+     (length . :TJ3_LENGTH)
+     (limits . :TJ3_LIMITS)
+     (maxend . :TJ3_MAXEND)
+     (maxstart . :TJ3_MAXSTART)
+     (milestone . org-tj--get-milestone)
+     (minend . :TJ3_MINEND)
+     (minstart . :TJ3_MINSTART)
+     (note . :TJ3_NOTE)
+     (period . :TJ3_PERIOD)
+     (precedes . :TJ3_PRECEDES)
+     (priority . org-tj--get-priority)
+     (projectid . :TJ3_PROJECTID)
+     (purge . :TJ3_PURGE)
+     (responsible . :TJ3_RESPONSIBLE)
+     (scheduled . :TJ3_SCHEDULED)
+     (scheduling . :TJ3_SCHEDULING)
+     (schedulingmode . :TJ3_SCHEDULINGMODE)
+     ;; . :TJ3_SUPPLEMENT (not implemented, useless here)
+     (shift . :TJ3_SHIFTS)
+     (start . org-tj--get-start)
+     (task . org-tj--get-inner-tasks)
+     (warn . :TJ3_WARN))
     (shift
-     :TJ3_LEAVES
-     :TJ3_REPLACE
-     :TJ3_TIMEZONE
-     :TJ3_VACATION
-     :TJ3_WORKINGHOURS)
+     (leaves . :TJ3_LEAVES)
+     (replace . :TJ3_REPLACE)
+     (timezone . :TJ3_TIMEZONE)
+     (vacation . :TJ3_VACATION)
+     (workinghours . :TJ3_WORKINGHOURS))
     (account
-     :TJ3_AGGREGATE
-     :TJ3_CREDITS
-     :TJ3_FLAGS)
+     (aggregate . :TJ3_AGGREGATE)
+     (credits . :TJ3_CREDITS)
+     (flags . :TJ3_FLAGS))
     (resource
-     :TJ3_BOOKING
-     :TJ3_CHARGESET
-     :TJ3_EFFICIENCY
-     :TJ3_EMAIL
-     :TJ3_FAIL
-     :TJ3_FLAGS
-     :TJ3_JOURNALENTRY
-     ;; :TJ3_LEAVEALLOWANCE (not fully tested)
-     :TJ3_LEAVES
-     :TJ3_LIMITS
-     :TJ3_MANAGERS
-     :TJ3_PURGE
-     :TJ3_RATE
-     :TJ3_SHIFTS
-     ;; :TJ3_SUPPLEMENT (not implemented, useless here)
-     :TJ3_VACATION
-     :TJ3_WARN
-     :TJ3_WORKINGHOURS))
+     (booking . :TJ3_BOOKING)
+     (chargeset . :TJ3_CHARGESET)
+     (efficiency . :TJ3_EFFICIENCY)
+     (email . :TJ3_EMAIL)
+     (fail . :TJ3_FAIL)
+     (flag . :TJ3_FLAGS)
+     (journalentry . :TJ3_JOURNALENTRY)
+     ;; . :TJ3_LEAVEALLOWANCE (not fully tested)
+     (leaves . :TJ3_LEAVES)
+     (limits . :TJ3_LIMITS)
+     (managers . :TJ3_MANAGERS)
+     (purge . :TJ3_PURGE)
+     (rate . :TJ3_RATE)
+     (shifts . :TJ3_SHIFTS)
+     ;; . :TJ3_SUPPLEMENT (not implemented, useless here)
+     (vacation . :TJ3_VACATION)
+     (warn . :TJ3_WARN)
+     (workinghours . :TJ3_WORKINGHOURS)))
   "Taskjuggler attributes that are valid as headline properties.")
 
 ;;; User Variables
@@ -437,28 +447,71 @@ siblings."
   "Return id for task or resource ITEM and list of IDS."
   (cdr (assq item ids)))
 
-(defun org-tj--get-name (item)
-  "Return name for task or resource ITEM.
+(defun org-tj--get-name (headline)
+  "Return name for task or resource HEADLINE.
 ITEM is a headline.  Return value is a string."
   ;; Quote double quotes in name.
   (replace-regexp-in-string
-   "\"" "\\\"" (org-element-property :raw-value item) t t))
+   "\"" "\\\"" (org-element-property :raw-value headline) t t))
 
-(defun org-tj--get-start (item)
-  "Return start date for task or resource ITEM.
-ITEM is a headline.  Return value is a string or nil if ITEM
+(defun org-tj--get-start (headline &optional _pd)
+  "Return start date for task or resource HEADLINE.
+ITEM is a headline.  Return value is a string or nil if HEADLINE
 doesn't have any start date defined."
-  (let ((scheduled (org-element-property :scheduled item)))
-    (or
-     (and scheduled (org-timestamp-format scheduled "%Y-%02m-%02d"))
-     (org-element-property :START item))))
+  (-if-let (scheduled (org-element-property :scheduled headline))
+      (org-timestamp-format scheduled "%Y-%02m-%02d")
+    (org-element-property :TJ3_START headline)))
 
-(defun org-tj--get-end (item)
-  "Return end date for task or resource ITEM.
-ITEM is a headline.  Return value is a string or nil if ITEM
+(defun org-tj--get-end (headline &optional _pd)
+  "Return end date for task or resource HEADLINE.
+ITEM is a headline.  Return value is a string or nil if HEADLINE
 doesn't have any end date defined."
-  (let ((deadline (org-element-property :deadline item)))
-    (and deadline (org-timestamp-format deadline "%Y-%02m-%02d"))))
+  (-if-let (deadline (org-element-property :deadline headline))
+      (org-timestamp-format deadline "%Y-%02m-%02d")
+    (org-element-property :TJ3_END headline)))
+
+(defun org-tj--get-effort (headline &optional _pd)
+  (or (org-element-property :TJ3_EFFORT headline)
+      (-some--> (org-element-property :EFFORT headline)
+                (org-duration-to-minutes it)
+                (/ it 60.0)
+                (format "%.1fh" it))))
+
+(defun org-tj--get-complete (headline &optional _pd)
+  (if (eq (org-element-property :todo-type headline) 'done) "100"
+    (org-element-property :TJ3_COMPLETE headline)))
+
+(defun org-tj--get-milestone (headline _pd)
+  (or (org-element-property :TJ3_MILESTONE headline)
+      (not (or (org-tj--subheadlines headline)
+               (org-element-property :TJ3_LENGTH headline)
+               (org-element-property :TJ3_DURATION headline)
+               (org-tj--get-effort headline)
+               (and (org-tj--get-start headline)
+                    (org-tj--get-end headline))
+               (org-element-property :TJ3_PERIOD headline)))))
+
+(defun org-tj--get-priority (headline &optional _pd)
+  (-some--> (org-element-property :priority headline)
+            (- org-lowest-priority it)
+            (* 1000 it)
+            (/ it (- org-lowest-priority org-highest-priority))
+            (max 1 it)))
+
+(defun org-tj--get-inner (fun headline pd)
+  (-some->>
+   (org-tj--subheadlines headline)
+   (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+   (--map (funcall fun it pd))))
+
+(defun org-tj--get-inner-tasks (headline pd)
+  (org-tj--get-inner #'org-tj--build-task headline pd))
+
+(defun org-tj--get-depends (headline pd)
+  (let ((tree (org-tj--proc-data-tree pd))
+        (ids (org-tj--proc-data-task-ids pd)))
+    (-when-let (depends (org-tj--resolve-dependencies headline tree))
+      (org-tj--format-dependencies depends headline ids))))
 
 ;;; Internal Functions
 
@@ -472,19 +525,29 @@ Return new string.  If S is the empty string, return it."
 KEYWORD is assumed to be like :TJ3_attribute."
   (->> keyword symbol-name (s-chop-prefix ":TJ3_") downcase))
 
-(defun org-tj--build-attributes (headline attributes)
+(defun org-tj--build-attributes (attr-alist headline pd)
   "Return attributes string for HEADLINE.
 ATTRIBUTES is a list of symbols representing valid attributes
 for HEADLINE as keywords."
   ;; TODO add validation here for attributes in headline that start
   ;; with TJ3_ but are not valid
-  (->> attributes
-       (--map (-when-let (value (org-element-property it headline))
-                (format "%s %s\n"
-                        (org-tj--keyword-to-attribute it)
-                        value)))
-       (-non-nil)
-       (s-join "")))
+  (cl-flet
+      ((eval-attr
+        (attr-data)
+        (let* ((name (car attr-data))
+               (action (cdr attr-data))
+               (value
+                (cond
+                 ((functionp action)
+                  (funcall action headline pd))
+                 ((keywordp action)
+                  (org-element-property action headline))
+                 (t (error "Unknown action: %s" action)))))
+          (cond
+           ((eq t value) (list name))
+           (value (cons name value))))))
+    (->> (--map (eval-attr it) attr-alist)
+         (-non-nil))))
 
 (defun org-tj--build-unique-id (item unique-ids)
   "Return a unique id for a given task or a resource.
@@ -515,7 +578,6 @@ ID is a string."
    "[^a-zA-Z0-9_]" "_"
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
-
 
 (defun org-tj--file-keywords-list-format (keywords key &optional
                                                    alt-key bracket?)
@@ -640,11 +702,13 @@ ID is a string."
 
 ;;; Dependencies
 
-(defun org-tj--resolve-dependencies (task _info tree)
+;; TODO combine this with the formatter, no reason to keep them
+;; separate
+(defun org-tj--resolve-dependencies (task tree)
   "Return a list of all tasks on which TASK depends."
   ;; TODO add blocker eventually, baby steps
   (let* ((deps-ids (-some->>
-                    (org-element-property :DEPENDS task)
+                    (org-element-property :TJ3_DEPENDS task)
                     (s-replace-regexp "{.*}" "")
                     (s-split ",")
                     (-map #'s-trim)))
@@ -673,49 +737,50 @@ ID is a string."
                  (-uniq it)))))
     depends))
 
-(defun org-tj--format-dependencies (dependencies task _info task-ids)
+(defun org-tj--format-dependencies (dependencies task task-ids)
   "Format DEPENDENCIES to match TaskJuggler syntax.
 DEPENDENCIES is list of dependencies for TASK, as returned by
 `org-tj-resolve-depedencies'.  TASK is a headline.
 INFO is a plist used as a communication channel.  Return value
 doesn't include leading \"depends\"."
-  (let* ((dep-str (concat (org-element-property :BLOCKER task)
-			  " "
-			  (org-element-property :DEPENDS task)))
-	 (get-path
-	  (lambda (dep)
-	    ;; Return path to DEP relatively to TASK.
-	    (let ((parent (org-export-get-parent task))
-		  (exclamations 1)
-		  (option
-		   (let ((id (org-element-property :TASK_ID dep)))
-		     (and id
-			  (string-match (concat id " +\\({.*?}\\)") dep-str)
-			  (match-string-no-properties 1 dep-str))))
-		  path)
-	      ;; Compute number of exclamation marks by looking for the
-	      ;; common ancestor between TASK and DEP.
-	      (while (not (org-element-map parent 'headline
-			    (lambda (hl) (eq hl dep))))
-		(incf exclamations)
-		(setq parent (org-export-get-parent parent)))
-	      ;; Build path from DEP to PARENT.
-	      (while (not (eq parent dep))
-		(push (org-tj--get-id dep task-ids) path)
-		(setq dep (org-export-get-parent dep)))
-	      ;; Return full path.  Add dependency options, if any.
-	      (concat (make-string exclamations ?!)
-		      (mapconcat 'identity path ".")
-		      (and option (concat " " option)))))))
+  (let* ((dep-str (format "%s %s"
+                          (org-element-property :BLOCKER task)
+                          (org-element-property :TJ3_DEPENDS task)))
+         (get-path
+          (lambda (dep)
+            ;; Return path to DEP relatively to TASK.
+            (let ((parent (org-export-get-parent task))
+                  (exclamations 1)
+                  (option
+                   (let ((id (org-element-property :TASK_ID dep)))
+                     (and id
+                          (string-match (concat id " +\\({.*?}\\)") dep-str)
+                          (match-string-no-properties 1 dep-str))))
+                  path)
+              ;; Compute number of exclamation marks by looking for the
+              ;; common ancestor between TASK and DEP.
+              (while (not (org-element-map parent 'headline
+                            (lambda (hl) (eq hl dep))))
+                (incf exclamations)
+                (setq parent (org-export-get-parent parent)))
+              ;; Build path from DEP to PARENT.
+              (while (not (eq parent dep))
+                (push (org-tj--get-id dep task-ids) path)
+                (setq dep (org-export-get-parent dep)))
+              ;; Return full path.  Add dependency options, if any.
+              (concat (make-string exclamations ?!)
+                      (mapconcat 'identity path ".")
+                      (and option (concat " " option)))))))
     ;; Return dependencies string, without the leading "depends".
-    (mapconcat (lambda (dep) (funcall get-path dep)) dependencies ", ")))
+    (-some->> (--map (funcall get-path it) dependencies)
+              (s-join ", "))))
 
 ;;; Translator Functions
 
-(defun org-tj--subheadlines (hl)
-  "Return subheadings under headline HL if any."
-  (let ((hl-contents (org-element-contents hl)))
-    (if (assoc 'section hl-contents) (cdr hl-contents) hl-contents)))
+(defun org-tj--subheadlines (headline)
+  "Return subheadings under HEADLINE if any."
+  (let ((contents (org-element-contents headline)))
+    (if (assoc 'section contents) (cdr contents) contents)))
 
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
@@ -938,13 +1003,16 @@ parse tree of the buffer."
       (when (member org-tj-report-tag (org-element-property :tags hl))
         hl))))
 
-(defun org-tj--build-project (keywords info tasks)
+(defun org-tj--build-project (pd)
   "Return a project declaration.
 PROJECT is a headline.  INFO is a plist used as a communication
 channel.  If no start date is specified, start today.  If no end
 date is specified, end `org-tj-default-project-duration'
 days from now."
-  (let* ((proj-kws (org-tj--file-project-keywords keywords))
+  (let* ((proj-kws (->> (org-tj--proc-data-keywords pd)
+                        (org-tj--file-project-keywords)))
+         (info (org-tj--proc-data-info pd))
+         (tasks (org-tj--proc-data-tasks pd))
          (id (org-tj--file-project-id proj-kws info))
          (name (org-tj--file-project-name proj-kws))
          (version (org-tj--file-project-version proj-kws))
@@ -1021,7 +1089,26 @@ days from now."
     (if (not attrs) (format "shift %s \"%s\"\n" id name)
       (format "shift %s \"%s\" {\n%s\n}\n" id name attrs))))
 
-(defun org-tj--build-task (task info task-ids tree &optional allocate)
+(defun org-tj--format-attributes (attribute-alist)
+  (cl-flet
+      ((format-attr
+        (cell)
+        (let ((key (symbol-name (car cell)))
+              (val (cdr cell)))
+          (print cell)
+          (cond
+           ((null val) key)
+           ((listp val) (->> val
+                             (--map (format "%s %s" key it))
+                             (apply #'concat)))
+           (val (format "%s %s" key val))
+           (t (error "Formatting error."))))))
+    (->> attribute-alist
+         (-map #'format-attr)
+         (s-join "\n")
+         (org-tj--indent-string))))
+  
+(defun org-tj--build-task (task pd)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -1031,70 +1118,55 @@ All valid attributes from TASK are inserted.  If TASK defines
 a property \"task_id\" it will be used as the id for this task.
 Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
-  (let* ((allocate (or allocate (org-element-property :ALLOCATE task)))
-         (complete
-          (if (eq (org-element-property :todo-type task) 'done) "100"
-            (org-element-property :COMPLETE task)))
-         (depends (org-tj--resolve-dependencies task info tree))
-         (effort (let ((property
-                        (intern (concat ":" (upcase org-effort-property)))))
-                   (org-element-property property task)))
-         (milestone
-          (or (org-element-property :MILESTONE task)
-              (not (or (org-element-map (org-element-contents task) 'headline
-                         'identity nil t)  ; Has task any child?
-                       effort
-                       (org-element-property :LENGTH task)
-                       (org-element-property :DURATION task)
-                       (and (org-tj--get-start task)
-                            (org-tj--get-end task))
-                       (org-element-property :PERIOD task)))))
-         (priority
-          (let ((pri (org-element-property :priority task)))
-            (and pri
-                 (max 1 (/ (* 1000 (- org-lowest-priority pri))
-                           (- org-lowest-priority org-highest-priority)))))))
-    (concat
-     ;; Opening task.
-     (format "task %s \"%s\" {\n"
-             (org-tj--get-id task task-ids)
-             (org-tj--get-name task))
-     ;; Add default attributes.
-     (and depends
-          (format "  depends %s\n"
-                  (org-tj--format-dependencies depends task info task-ids)))
-     (and allocate
-          (format "  purge allocate\n  allocate %s\n" allocate))
-     (and complete (format "  complete %s\n" complete))
-     (and effort
-          (format "  effort %s\n"
-                  (let* ((minutes (org-duration-to-minutes effort))
-                         (hours (/ minutes 60.0)))
-                    (format "%.1fh" hours))))
-     (and priority (format "  priority %s\n" priority))
-     (and milestone "  milestone\n")
-     ;; Add other valid attributes.
-     ;; TODO this can be cleaned up
-     (org-tj--indent-string
-      (let* ((orig-attributes
-              (->> (alist-get 'task org-tj--property-attributes)
-                   (org-tj--build-attributes task)))
-             (start (-some->>
-                     (org-tj--get-start task)
-                     (format "start %s\n")))
-             (end (-some->>
-                   (org-tj--get-end task)
-                   (format "end %s\n"))))
-        (s-join "" (-non-nil (list orig-attributes start end)))))
-     ;; Add inner tasks.
-     (->> (org-tj--subheadlines task)
-          ;; skip over any inner tasks that have an ignore tag
-          (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-          (--map (org-tj--build-task it info task-ids tree))
-          (apply #'concat)
-          org-tj--indent-string)
-     ;; Closing task.
-     "}\n")))
+  (let ((id (->> (org-tj--proc-data-task-ids pd)
+                 (org-tj--get-id task)))
+        (name (org-tj--get-name task))
+        ;; TODO this needs to be done before this function
+        ;; (allocate
+        ;;  (-some->>
+        ;;   (or allocate (org-element-property :TJ3_ALLOCATE task))
+        ;;           (format "allocate %s")))
+        ;; (purge-allocate (when allocate "purge allocate"))
+        ;; (start (-some->>
+        ;;         (org-tj--get-start task)
+        ;;         (format "start %s")))
+        ;; (end (-some->>
+        ;;       (org-tj--get-end task)
+        ;;       (format "end %s")))
+        ;; (complete
+        ;;  (-some->>
+        ;;   (org-tj--get-complete task)
+        ;;   (format "complete %s")))
+        ;; (depends
+        ;;  (-some-->
+        ;;   (org-tj--resolve-dependencies task tree)
+        ;;   (org-tj--format-dependencies it task task-ids)
+        ;;   (format "depends %s" it)))
+        ;; (effort
+        ;;  (-some->>
+        ;;   (org-tj--get-effort task)
+        ;;   (format "effort %s")))
+        ;; (milestone
+        ;;  (when (org-tj--get-milestone task) "milestone"))
+        ;; (priority
+        ;;  (-some-->
+        ;;   (org-tj--get-priority task)
+        ;;   (format "priority %s")))
+        (attrs
+         (--> (alist-get 'task org-tj--property-attributes)
+              (org-tj--build-attributes it task pd)
+              (if (not (assoc 'allocate it)) it
+                (cons '(purge . "allocate") it))
+              (org-tj--format-attributes it))))
+        ;; (inner-tasks (org-tj--get-inner task info task-ids tree #'org-tj--build-task))
+        ;; (joined-attrs (-some->>
+        ;;                (list allocate purge-allocate start end
+        ;;                      complete depends effort milestone
+        ;;                      priority attrs inner-tasks)
+        ;;                (-non-nil)
+        ;;                (s-join "\n")
+        ;;                (org-tj--indent-string))))
+    (format "%s \"%s\" {\n%s\n}\n" id name attrs)))
 
 (defun org-tj--build-report (hl)
   "Create a task report definition."
@@ -1117,11 +1189,10 @@ a unique id will be associated to it."
                             (org-tj--src-to-rich-text it))
                       it)))
              (props
-              (-some->>
-               org-tj--property-attributes
-               (alist-get 'report)
-               (org-tj--build-attributes hl)
-               (org-tj--indent-string)))
+              (-some-->
+               (alist-get 'report org-tj--property-attributes)
+               (org-tj--build-attributes it hl)
+               (org-tj--indent-string it)))
                ;; (--map (cons it (org-element-property it hl)))
                ;; (--remove (not (cdr it)))))
              (attrs
@@ -1180,49 +1251,86 @@ neither is defined a unique id will be associated to it."
    ;; Closing resource.
    "}\n"))
 
+(cl-defstruct (org-tj--proc-data
+               (:copier nil))
+  "A collection of processed data from the export tree."
+  info
+  tree
+  keywords
+  tasks
+  task-ids
+  accounts
+  account-ids
+  shifts
+  shift-ids
+  resources
+  resource-ids
+  reports
+  report-ids)
+
+;; (defun org-tj--add-allocates (tasks)
+;;   (cl-flet (add-allocates
+;;             (task)
+;;             (org-element-put-property
+;;              task :TJ3_ALLOCATE (user-login-name))
+;;              (or (org-taskjuggler-get-id (car main-resources) info)
+;;                  ))))
+
+(defun org-tj--make-proc-data (info)
+  (let* ((tree (plist-get info :parse-tree))
+         (tasks (org-tj--get-tasks tree))
+         (accounts (org-tj--get-accounts tree))
+         (shifts (org-tj--get-shifts tree))
+         (resources (org-tj--get-resource-headlines tree))
+         (reports (org-tj--get-reports tree)))
+    ;; TODO add allocate override here if no resources given
+    (make-org-tj--proc-data
+     :info info
+     :tree tree
+     :keywords (org-tj--file-tj3-keywords tree)
+     :accounts accounts
+     :account-ids (org-tj--assign-global-ids accounts)
+     :tasks tasks
+     :task-ids (org-tj--assign-local-ids tasks)
+     :shifts shifts
+     :shift-ids (org-tj--assign-global-ids shifts)
+     :resources resources
+     :resource-ids (org-tj--assign-global-ids resources)
+     :reports reports)))
+
 (defun org-tj--build-tjp-file (_contents info)
   "Build full contents of a taskjuggler project file.
 INFO is a plist holding export options. Return formatted string in 
 taskjuggler syntax."
-  (let* ((tree (plist-get info :parse-tree))
-         (keywords (org-tj--file-tj3-keywords tree))
-         (tasks (org-tj--get-tasks tree))
-         (task-ids (org-tj--assign-local-ids tasks))
-         (accounts (org-tj--get-accounts tree))
-         (account-ids (org-tj--assign-global-ids tasks))
-         (shifts (org-tj--get-shifts tree))
-         (shift-ids (org-tj--assign-global-ids shifts))
-         (resources (org-tj--get-resource-headlines tree))
-         (resource-ids (org-tj--assign-global-ids resources))
-         (reports (org-tj--get-reports tree)))
+  (let ((pd (org-tj--make-proc-data info)))
     (concat
      ;; insert project
-     (org-tj--build-project keywords info tasks)
+     (org-tj--build-project pd)
      ;; insert global properties
      ;; (org-element-normalize-string org-tj-default-global-properties)
-     (org-tj--file-navigator keywords)
-     (org-tj--file-copyright keywords)
-     (org-tj--file-rate keywords)
-     (org-tj--file-limits-format keywords)
-     (org-tj--file-vacation-format keywords)
-     (org-tj--file-flags-format keywords)
+     ;; (org-tj--file-navigator keywords)
+     ;; (org-tj--file-copyright keywords)
+     ;; (org-tj--file-rate keywords)
+     ;; (org-tj--file-limits-format keywords)
+     ;; (org-tj--file-vacation-format keywords)
+     ;; (org-tj--file-flags-format keywords)
      ;; insert resources; provide a default one if none is specified
-     (if resources
-         (->> resources
-              (--map (org-tj--build-resource it info resource-ids))
-              (apply #'concat))
-       (format "resource %s \"%s\" {\n}\n" (user-login-name)
-               user-full-name))
+     ;; (if resources
+     ;;     (->> resources
+     ;;          (--map (org-tj--build-resource it info resource-ids))
+     ;;          (apply #'concat))
+     ;;   (format "resource %s \"%s\" {\n}\n" (user-login-name)
+     ;;           user-full-name))
      ;; insert accounts
-     (->> accounts
-          (--map (org-tj--build-account it info account-ids tree))
-          (apply #'concat))
+     ;; (->> accounts
+     ;;      (--map (org-tj--build-account it info account-ids tree))
+     ;;      (apply #'concat))
      ;; insert shifts
-     (->> shifts
-          (--map (org-tj--build-shift it info shift-ids tree))
-          (apply #'concat))
+     ;; (->> shifts
+     ;;      (--map (org-tj--build-shift it info shift-ids tree))
+     ;;      (apply #'concat))
      ;; 5. Insert tasks.
-     (->> tasks
+     (->> (org-tj--proc-data-tasks pd)
           (--map
            ;; If no resource is allocated among tasks, allocate one to
            ;; the first task.
@@ -1234,25 +1342,26 @@ taskjuggler syntax."
                     (user-login-name))))
              ;; TODO set better default resource
              ;; (or (org-tj--get-id (car resources) resource-ids)
-             (org-tj--build-task it info task-ids tree allocate)))
-          (apply #'concat))
+             (org-tj--build-task it pd)))
+          (--map (format (format "task %s" it)))
+          (apply #'concat)))))
      ;; 6. Insert reports.  If no report is defined, insert default
      ;;    reports.
-     (if reports
-         (mapconcat
-          (lambda (report) (org-tj--build-report report))
-          reports "")
-       ;; insert title in default reports
-       (let* ((title (org-export-data (plist-get info :title) info))
-              (report-title (if (string= title "")
-                                ;; TODO why are we getting this name?
-                                (org-tj--get-name (car tasks))
-                              title)))
-         (mapconcat
-          'org-element-normalize-string
-          (--map
-           (replace-regexp-in-string "%title" report-title it t t)
-           org-tj-default-reports) ""))))))
+     ;; (if reports
+     ;;     (mapconcat
+     ;;      (lambda (report) (org-tj--build-report report))
+     ;;      reports "")
+     ;;   ;; insert title in default reports
+     ;;   (let* ((title (org-export-data (plist-get info :title) info))
+     ;;          (report-title (if (string= title "")
+     ;;                            ;; TODO why are we getting this name?
+     ;;                            (org-tj--get-name (car tasks))
+     ;;                          title)))
+     ;;     (mapconcat
+     ;;      'org-element-normalize-string
+     ;;      (--map
+     ;;       (replace-regexp-in-string "%title" report-title it t t)
+     ;;       org-tj-default-reports) ""))))))
 
 ;;; export functions
 
