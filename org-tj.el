@@ -556,7 +556,7 @@ resource.  Its id is derived from its name and made unique
 against UNIQUE-IDS.  If the (downcased) first token of the
 headline is not unique try to add more (downcased) tokens of the
 headline or finally add more underscore characters (\"_\")."
-  (let ((id (org-string-nw-p (org-element-property :TASK_ID item))))
+  (let ((id (org-string-nw-p (org-element-property :TJ3_ID item))))
     ;; If an id is specified, use it, as long as it's unique.
     (if (and id (not (member id unique-ids))) id
       (let* ((parts (split-string (org-element-property :raw-value item)))
@@ -729,7 +729,7 @@ ID is a string."
                  (org-element-map it 'headline
                    (lambda (task)
                      (-when-let (task-id
-                                 (or (org-element-property :TASK_ID task)
+                                 (or (org-element-property :TJ3_ID task)
                                      (org-element-property :ID task)))
                        (when (member task-id deps-ids) task))))
                  (append prev-task it)
@@ -752,7 +752,7 @@ doesn't include leading \"depends\"."
             (let ((parent (org-export-get-parent task))
                   (exclamations 1)
                   (option
-                   (let ((id (org-element-property :TASK_ID dep)))
+                   (let ((id (org-element-property :TJ3_ID dep)))
                      (and id
                           (string-match (concat id " +\\({.*?}\\)") dep-str)
                           (match-string-no-properties 1 dep-str))))
@@ -994,7 +994,7 @@ parse tree of the buffer."
              hl))
          nil t)
        (org-element-map it 'headline #'identity)
-       (--filter (org-element-property :RESOURCE_ID it) it)))
+       (--filter (org-element-property :TJ3_ID it) it)))
 
 (defun org-tj--get-reports (tree)
   "Return reports tree from TREE."
@@ -1107,8 +1107,8 @@ days from now."
          (-map #'format-attr)
          (s-join "\n")
          (org-tj--indent-string))))
-  
-(defun org-tj--build-task (task pd)
+
+(defun org-tj--build-declaration (type headline pd)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -1118,55 +1118,29 @@ All valid attributes from TASK are inserted.  If TASK defines
 a property \"task_id\" it will be used as the id for this task.
 Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
-  (let ((id (->> (org-tj--proc-data-task-ids pd)
-                 (org-tj--get-id task)))
-        (name (org-tj--get-name task))
-        ;; TODO this needs to be done before this function
-        ;; (allocate
-        ;;  (-some->>
-        ;;   (or allocate (org-element-property :TJ3_ALLOCATE task))
-        ;;           (format "allocate %s")))
-        ;; (purge-allocate (when allocate "purge allocate"))
-        ;; (start (-some->>
-        ;;         (org-tj--get-start task)
-        ;;         (format "start %s")))
-        ;; (end (-some->>
-        ;;       (org-tj--get-end task)
-        ;;       (format "end %s")))
-        ;; (complete
-        ;;  (-some->>
-        ;;   (org-tj--get-complete task)
-        ;;   (format "complete %s")))
-        ;; (depends
-        ;;  (-some-->
-        ;;   (org-tj--resolve-dependencies task tree)
-        ;;   (org-tj--format-dependencies it task task-ids)
-        ;;   (format "depends %s" it)))
-        ;; (effort
-        ;;  (-some->>
-        ;;   (org-tj--get-effort task)
-        ;;   (format "effort %s")))
-        ;; (milestone
-        ;;  (when (org-tj--get-milestone task) "milestone"))
-        ;; (priority
-        ;;  (-some-->
-        ;;   (org-tj--get-priority task)
-        ;;   (format "priority %s")))
+  (let ((id (--> (symbol-name type)
+                 (format "org-tj--proc-data-%s-ids" it)
+                 (intern it)
+                 (funcall it pd)
+                 (org-tj--get-id headline it)))
+        (name (org-tj--get-name headline))
         (attrs
-         (--> (alist-get 'task org-tj--property-attributes)
-              (org-tj--build-attributes it task pd)
-              (if (not (assoc 'allocate it)) it
-                (cons '(purge . "allocate") it))
+         (--> (alist-get type org-tj--property-attributes)
+              (org-tj--build-attributes it headline pd)
+              ;; TODO how to generalize this?
+              ;; (if (not (assoc 'allocate it)) it
+              ;;   (cons '(purge . "allocate") it))
               (org-tj--format-attributes it))))
-        ;; (inner-tasks (org-tj--get-inner task info task-ids tree #'org-tj--build-task))
-        ;; (joined-attrs (-some->>
-        ;;                (list allocate purge-allocate start end
-        ;;                      complete depends effort milestone
-        ;;                      priority attrs inner-tasks)
-        ;;                (-non-nil)
-        ;;                (s-join "\n")
-        ;;                (org-tj--indent-string))))
     (format "%s \"%s\" {\n%s\n}\n" id name attrs)))
+  
+(defun org-tj--build-task (task pd)
+  (org-tj--build-declaration 'task task pd))
+
+(defun org-tj--build-tasks (pd)
+  (->> (org-tj--proc-data-tasks pd)
+          (--map (org-tj--build-task it pd))
+          (--map (format (format "task %s" it)))
+          (apply #'concat)))
 
 (defun org-tj--build-report (hl)
   "Create a task report definition."
@@ -1214,42 +1188,54 @@ a unique id will be associated to it."
     (error "Type not specified for headline: %s"
            (org-element-property :raw-value hl))))
 
-(defun org-tj--build-resource (resource _info resource-ids)
-  "Return a resource declaration.
+(defun org-tj--build-resource (resource pd)
+  (org-tj--build-declaration 'resource resource pd))
 
-RESOURCE is a headline.  INFO is a plist used as a communication
-channel.
+;; (defun org-tj--build-resource (resource _info resource-ids)
+;;   "Return a resource declaration.
 
-All valid attributes from RESOURCE are inserted.  If RESOURCE
-defines a property \"resource_id\" it will be used as the id for
-this resource.  Otherwise it will use the ID property.  If
-neither is defined a unique id will be associated to it."
-  (concat
-   ;; Opening resource.
-   (format "resource %s \"%s\" {\n"
-           (org-tj--clean-id
-            (or (org-element-property :RESOURCE_ID resource)
-                (org-element-property :ID resource)
-                (org-tj--get-id resource resource-ids)))
-           (org-tj--get-name resource))
-   ;; Add attributes.
-   (->> (alist-get 'resource org-tj--property-attributes)
-        (org-tj--build-attributes resource)
-        (org-tj--indent-string))
-   ;; Add inner resources.
-   (->> (org-tj--subheadlines resource)
-        (--map (org-tj--build-resource it nil resource-ids))
-        (apply #'concat)
-        org-tj--indent-string)
-   ;; (org-tj--indent-string
-   ;;  (mapconcat
-   ;;   'identity
-   ;;   (org-element-map (org-element-contents resource) 'headline
-   ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
-   ;;     nil nil 'headline)
-   ;;   ""))
-   ;; Closing resource.
-   "}\n"))
+;; RESOURCE is a headline.  INFO is a plist used as a communication
+;; channel.
+
+;; All valid attributes from RESOURCE are inserted.  If RESOURCE
+;; defines a property \"resource_id\" it will be used as the id for
+;; this resource.  Otherwise it will use the ID property.  If
+;; neither is defined a unique id will be associated to it."
+;;   (concat
+;;    ;; Opening resource.
+;;    (format "resource %s \"%s\" {\n"
+;;            (org-tj--clean-id
+;;             (or (org-element-property :RESOURCE_ID resource)
+;;                 (org-element-property :ID resource)
+;;                 (org-tj--get-id resource resource-ids)))
+;;            (org-tj--get-name resource))
+;;    ;; Add attributes.
+;;    (->> (alist-get 'resource org-tj--property-attributes)
+;;         (org-tj--build-attributes resource)
+;;         (org-tj--indent-string))
+;;    ;; Add inner resources.
+;;    (->> (org-tj--subheadlines resource)
+;;         (--map (org-tj--build-resource it nil resource-ids))
+;;         (apply #'concat)
+;;         org-tj--indent-string)
+;;    ;; (org-tj--indent-string
+;;    ;;  (mapconcat
+;;    ;;   'identity
+;;    ;;   (org-element-map (org-element-contents resource) 'headline
+;;    ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
+;;    ;;     nil nil 'headline)
+;;    ;;   ""))
+;;    ;; Closing resource.
+;;    "}\n"))
+
+(defun org-tj--build-resources (pd)
+  (-if-let (resources (org-tj--proc-data-resources pd))
+      (->> resources
+           (--map (org-tj--build-resource it pd))
+           (--map (format (format "resource %s" it)))
+           (apply #'concat))
+    (format "resource %s \"%s\"\n" (user-login-name)
+            user-full-name)))
 
 (cl-defstruct (org-tj--proc-data
                (:copier nil))
@@ -1268,29 +1254,28 @@ neither is defined a unique id will be associated to it."
   reports
   report-ids)
 
-;; (defun org-tj--add-allocates (tasks)
-;;   (cl-flet (add-allocates
-;;             (task)
-;;             (org-element-put-property
-;;              task :TJ3_ALLOCATE (user-login-name))
-;;              (or (org-taskjuggler-get-id (car main-resources) info)
-;;                  ))))
+(defun org-tj--add-allocates (tasks)
+  (cl-flet ((add-allocates
+             (task)
+             (org-element-put-property
+              task :TJ3_ALLOCATE (user-login-name))))
+    (-map #'add-allocates tasks)))
 
 (defun org-tj--make-proc-data (info)
   (let* ((tree (plist-get info :parse-tree))
-         (tasks (org-tj--get-tasks tree))
+         (tasks (->> (org-tj--get-tasks tree)
+                     ))
          (accounts (org-tj--get-accounts tree))
          (shifts (org-tj--get-shifts tree))
          (resources (org-tj--get-resource-headlines tree))
          (reports (org-tj--get-reports tree)))
-    ;; TODO add allocate override here if no resources given
     (make-org-tj--proc-data
      :info info
      :tree tree
      :keywords (org-tj--file-tj3-keywords tree)
      :accounts accounts
      :account-ids (org-tj--assign-global-ids accounts)
-     :tasks tasks
+     :tasks (if resources tasks (org-tj--add-allocates tasks))
      :task-ids (org-tj--assign-local-ids tasks)
      :shifts shifts
      :shift-ids (org-tj--assign-global-ids shifts)
@@ -1315,6 +1300,7 @@ taskjuggler syntax."
      ;; (org-tj--file-vacation-format keywords)
      ;; (org-tj--file-flags-format keywords)
      ;; insert resources; provide a default one if none is specified
+     (org-tj--build-resources pd)
      ;; (if resources
      ;;     (->> resources
      ;;          (--map (org-tj--build-resource it info resource-ids))
@@ -1330,21 +1316,11 @@ taskjuggler syntax."
      ;;      (--map (org-tj--build-shift it info shift-ids tree))
      ;;      (apply #'concat))
      ;; 5. Insert tasks.
-     (->> (org-tj--proc-data-tasks pd)
-          (--map
-           ;; If no resource is allocated among tasks, allocate one to
-           ;; the first task.
-           (let ((allocate
-                  (unless (org-element-map it 'headline
-                            (lambda (task)
-                              (org-element-property :ALLOCATE task)
-                          nil t))
-                    (user-login-name))))
-             ;; TODO set better default resource
-             ;; (or (org-tj--get-id (car resources) resource-ids)
-             (org-tj--build-task it pd)))
-          (--map (format (format "task %s" it)))
-          (apply #'concat)))))
+     (org-tj--build-tasks pd))))
+     ;; (->> (org-tj--proc-data-tasks pd)
+     ;;      (--map (org-tj--build-task it pd))
+     ;;      (--map (format (format "task %s" it)))
+     ;;      (apply #'concat)))))
      ;; 6. Insert reports.  If no report is defined, insert default
      ;;    reports.
      ;; (if reports
