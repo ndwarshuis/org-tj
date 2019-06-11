@@ -1023,37 +1023,46 @@ days from now."
     (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
             id name version start end attrs)))
 
-(defun org-tj--build-account (account info account-ids tree)
-  "Return an account declaration."
-  (let* ((id (org-tj--get-id account account-ids))
-         (name (org-tj--get-name account))
-         (credits (-some->>
-                   (org-element-property :CREDITS account)
-                   (format "credits %s")))
-         (aggregate (-some->>
-                     (org-element-property :AGGREGATE account)
-                     (format "aggregate %s")))
-         (balance (-some->>
-                    (org-element-property :CREDITS account)
-                    (format "credits %s")))
-         (flags (-some->>
-                    (org-element-property :FLAGS account)
-                    (format "flags %s")))
-         (inner-accounts
-          (-some->>
-           (org-tj--subheadlines account)
-           ;; skip over any inner accounts that have an ignore tag
-           (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-           (--map (org-tj--build-account it info account-ids tree))
-           (apply #'concat)))
-         (attrs
-          (-some->>
-           (list credits aggregate balance inner-accounts)
-           (-non-nil)
-           (s-join "\n")
-           (org-tj--indent-string))))
-    (if (not attrs) (format "account %s \"%s\"\n" id name)
-      (format "account %s \"%s\" {\n%s\n}\n" id name attrs))))
+(defun org-tj--build-account (account pd)
+  (org-tj--build-declaration 'account account pd))
+
+(defun org-tj--build-accounts (pd)
+  (->> (org-tj--proc-data-accounts pd)
+          (--map (org-tj--build-account it pd))
+          (--map (format (format "account %s" it)))
+          (apply #'concat)))
+
+;; (defun org-tj--build-account (account info account-ids tree)
+;;   "Return an account declaration."
+;;   (let* ((id (org-tj--get-id account account-ids))
+;;          (name (org-tj--get-name account))
+;;          (credits (-some->>
+;;                    (org-element-property :CREDITS account)
+;;                    (format "credits %s")))
+;;          (aggregate (-some->>
+;;                      (org-element-property :AGGREGATE account)
+;;                      (format "aggregate %s")))
+;;          (balance (-some->>
+;;                     (org-element-property :CREDITS account)
+;;                     (format "credits %s")))
+;;          (flags (-some->>
+;;                     (org-element-property :FLAGS account)
+;;                     (format "flags %s")))
+;;          (inner-accounts
+;;           (-some->>
+;;            (org-tj--subheadlines account)
+;;            ;; skip over any inner accounts that have an ignore tag
+;;            (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+;;            (--map (org-tj--build-account it info account-ids tree))
+;;            (apply #'concat)))
+;;          (attrs
+;;           (-some->>
+;;            (list credits aggregate balance inner-accounts)
+;;            (-non-nil)
+;;            (s-join "\n")
+;;            (org-tj--indent-string))))
+;;     (if (not attrs) (format "account %s \"%s\"\n" id name)
+;;       (format "account %s \"%s\" {\n%s\n}\n" id name attrs))))
 
 (defun org-tj--build-shift (shift info shift-ids tree)
   "Return a shift declaration."
@@ -1308,6 +1317,7 @@ taskjuggler syntax."
      ;;   (format "resource %s \"%s\" {\n}\n" (user-login-name)
      ;;           user-full-name))
      ;; insert accounts
+     (org-tj--build-accounts pd)
      ;; (->> accounts
      ;;      (--map (org-tj--build-account it info account-ids tree))
      ;;      (apply #'concat))
