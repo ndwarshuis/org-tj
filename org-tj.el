@@ -1308,48 +1308,11 @@ taskjuggler syntax."
      ;; (org-tj--file-limits-format keywords)
      ;; (org-tj--file-vacation-format keywords)
      ;; (org-tj--file-flags-format keywords)
-     ;; insert resources; provide a default one if none is specified
      (org-tj--build-resources pd)
-     ;; (if resources
-     ;;     (->> resources
-     ;;          (--map (org-tj--build-resource it info resource-ids))
-     ;;          (apply #'concat))
-     ;;   (format "resource %s \"%s\" {\n}\n" (user-login-name)
-     ;;           user-full-name))
-     ;; insert accounts
      (org-tj--build-accounts pd)
-     ;; (->> accounts
-     ;;      (--map (org-tj--build-account it info account-ids tree))
-     ;;      (apply #'concat))
-     ;; insert shifts
      (org-tj--build-shifts pd)
-     ;; (->> shifts
-     ;;      (--map (org-tj--build-shift it info shift-ids tree))
-     ;;      (apply #'concat))
-     ;; 5. Insert tasks.
      (org-tj--build-tasks pd)
-     ;; (->> (org-tj--proc-data-tasks pd)
-     ;;      (--map (org-tj--build-task it pd))
-     ;;      (--map (format (format "task %s" it)))
-     ;;      (apply #'concat)))))
-     ;; 6. Insert reports.  If no report is defined, insert default
-     ;;    reports.
      (org-tj--build-reports pd))))
-     ;; (if reports
-     ;;     (mapconcat
-     ;;      (lambda (report) (org-tj--build-report report))
-     ;;      reports "")
-     ;;   ;; insert title in default reports
-     ;;   (let* ((title (org-export-data (plist-get info :title) info))
-     ;;          (report-title (if (string= title "")
-     ;;                            ;; TODO why are we getting this name?
-     ;;                            (org-tj--get-name (car tasks))
-     ;;                          title)))
-     ;;     (mapconcat
-     ;;      'org-element-normalize-string
-     ;;      (--map
-     ;;       (replace-regexp-in-string "%title" report-title it t t)
-     ;;       org-tj-default-reports) ""))))))
 
 ;;; export functions
 
