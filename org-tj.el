@@ -46,23 +46,23 @@
   '(caption center epilog footer header headline left prolog right))
 
 (defconst org-tj--property-attributes
-  '((report
+  `((report
      ;; :TJ3_accountreport (not fully tested)
      (accountroot . :TJ3_ACCOUNTROOT)
      ;; . :TJ3_auxdir (not fully tested)
      (balance . :TJ3_BALANCE)
-     (caption . org-tj--get-caption)
-     (center . org-tj--get-center)
+     (caption . ,(-partial #'org-tj--get-rich-text "caption"))
+     (center . ,(-partial #'org-tj--get-rich-text "center"))
      (columns . :TJ3_COLUMNS)
      (currencyformat . :TJ3_CURRENCYFORMAT)
-     (end . org-tj--get-end)
-     (epilog . org-tj--get-epilog)
+     (end . ,(-partial #'org-tj--get-rich-text "end"))
+     (epilog . ,(-partial #'org-tj--get-rich-text "epilog"))
      ;; . :TJ3_EXPORT (not implemented)
      (flags . :TJ3_FLAGS)
-     (footer . org-tj--get-footer)
-     (format . :TJ3_FORMATS)
-     (header . org-tj--get-header)
-     (headline . org-tj-get--headline)
+     (footer . ,(-partial #'org-tj--get-rich-text "footer"))
+     (formats . :TJ3_FORMATS)
+     (header . ,(-partial #'org-tj--get-rich-text "header"))
+     (headline . ,(-partial #'org-tj--get-rich-text "headline"))
      (height . :TJ3_HEIGHT)
      (hideaccount . :TJ3_HIDEACCOUNT)
      (hidejournalentry . :TJ3_HIDEJOURNALENTRY)
@@ -70,16 +70,16 @@
      (hidetask . :TJ3_HIDETASK)
      (journalattributes . :TJ3_JOURNALATTRIBUTES)
      (journalmode . :TJ3_JOURNALMODE)
-     (left . org-tj--get-left)
+     (left . ,(-partial #'org-tj--get-rich-text "left"))
      (loadunit . :TJ3_LOADUNIT)
      (numberformat . :TJ3_NUMBERFORMAT)
      ;; . :TJ3_OPENNODES (internal use only)
      (period . :TJ3_PERIOD)
-     (prolog . org-tj--get-prolog)
+     (prolog . ,(-partial #'org-tj--get-rich-text "prolog"))
      (purge . :TJ3_PURGE)
      (rawhtmlhead . :TJ3_RAWHTMLHEAD)
-     ;; . :TJ3_RESOURCEREPORT (handled elsewhere)
-     (right . org-tj--get-right)
+     (resourcereport . org-tj--get-resourcereports)
+     (right . ,(-partial #'org-tj--get-rich-text "right"))
      (rollupaccount . :TJ3_ROLLUPACCOUNT)
      (rollupresource . :TJ3_ROLLUPRESOURCE)
      (rolluptask . :TJ3_ROLLUPTASK)
@@ -90,9 +90,9 @@
      (sortresources . :TJ3_SORTRESOURCES)
      (sorttasks . :TJ3_SORTTASKS)
      (start . org-tj--get-start)
-     ;; . :TJ3_TASKREPORT (handled elsewhere)
+     (taskreport . org-tj--get-taskreports)
      (taskroot . :TJ3_TASKROOT)
-     ;; . :TJ3_TEXTREPORT (handled elsewhere)
+     (textreport . org-tj--get-textreports)
      (timeformat . :TJ3_TIMEFORMAT)
      (timezone . :TJ3_TIMEZONE)
      (title . :TJ3_TITLE)
@@ -507,11 +507,36 @@ doesn't have any end date defined."
 (defun org-tj--get-inner-tasks (headline pd)
   (org-tj--get-inner #'org-tj--build-task headline pd))
 
+(defun org-tj--get-inner-report (kind headline pd)
+  (-some->>
+   (org-tj--subheadlines headline)
+   (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+   (--filter (equal kind (org-element-property :TJ3_REPORT_KIND it)))
+   (--map (org-tj--build-report it pd))))
+
+(defun org-tj--get-resourcereports (headline pd)
+  (org-tj--get-inner-report "resource" headline pd))
+
+(defun org-tj--get-taskreports (headline pd)
+  (org-tj--get-inner-report "task" headline pd))
+   
+(defun org-tj--get-textreports (headline pd)
+  (org-tj--get-inner-report "text" headline pd))
+
 (defun org-tj--get-depends (headline pd)
   (let ((tree (org-tj--proc-data-tree pd))
         (ids (org-tj--proc-data-task-ids pd)))
     (-when-let (depends (org-tj--resolve-dependencies headline tree))
       (org-tj--format-dependencies depends headline ids))))
+
+(defun org-tj--get-rich-text (attribute headline pd)
+  (-some-->
+   (org-element-contents headline)
+   (assq 'section it)
+   (org-element-contents it)
+   (org-element-map it 'src-block #'identity)
+   (--first (equal (org-element-property :name it) attribute) it)
+   (org-tj--src-to-rich-text it)))
 
 ;;; Internal Functions
 
@@ -556,7 +581,8 @@ resource.  Its id is derived from its name and made unique
 against UNIQUE-IDS.  If the (downcased) first token of the
 headline is not unique try to add more (downcased) tokens of the
 headline or finally add more underscore characters (\"_\")."
-  (let ((id (org-string-nw-p (org-element-property :TJ3_ID item))))
+  (let ((id (org-string-nw-p (or (org-element-property :TJ3_ID item)
+                                 (org-element-property :CUSTOM_ID item)))))
     ;; If an id is specified, use it, as long as it's unique.
     (if (and id (not (member id unique-ids))) id
       (let* ((parts (split-string (org-element-property :raw-value item)))
@@ -1104,7 +1130,6 @@ days from now."
         (cell)
         (let ((key (symbol-name (car cell)))
               (val (cdr cell)))
-          (print cell)
           (cond
            ((null val) key)
            ((listp val) (->> val
@@ -1151,51 +1176,82 @@ a unique id will be associated to it."
           (--map (format (format "task %s" it)))
           (apply #'concat)))
 
-(defun org-tj--build-report (hl)
-  "Create a task report definition."
-  ;; assume the incoming headline is indeed a valid report
-  (-if-let (type (org-element-property :REPORT_KIND hl))
-      (let* ((name (org-element-property :raw-value hl))
-             (id (org-element-property :CUSTOM_ID hl))
-             (rich-text
-              (-some-->
-               (org-element-contents hl)
-               (assq 'section it)
-               (org-element-contents it)
-               (org-element-map it 'src-block #'identity)
-               (--filter
-                (member
-                 (org-element-property :name it)
-                 (-map #'symbol-name org-tj--report-attributes-rich-text))
-                it)
-               (--map (cons (make-symbol (org-element-property :name it))
-                            (org-tj--src-to-rich-text it))
-                      it)))
-             (props
-              (-some-->
-               (alist-get 'report org-tj--property-attributes)
-               (org-tj--build-attributes it hl)
-               (org-tj--indent-string it)))
-               ;; (--map (cons it (org-element-property it hl)))
-               ;; (--remove (not (cdr it)))))
-             (attrs
-              (-some->>
-               (append rich-text)
-               ;; TODO add validation here?
-               (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
-               (-map #'org-tj--indent-string)
-               (apply #'concat)))
-             (inner-reports
-              (->> (org-tj--subheadlines hl)
-                   (--map (org-tj--build-report it))
-                   (apply #'concat)
-                   org-tj--indent-string)))
-        ;; TODO validate the report type and scream if wrong?
-        (if (not type) ""
-          (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat props attrs)
-                  inner-reports)))
-    (error "Type not specified for headline: %s"
-           (org-element-property :raw-value hl))))
+;; (defun org-tj--build-report (hl)
+;;   "Create a task report definition."
+;;   ;; assume the incoming headline is indeed a valid report
+;;   (-if-let (type (org-element-property :REPORT_KIND hl))
+;;       (let* ((name (org-element-property :raw-value hl))
+;;              (id (org-element-property :CUSTOM_ID hl))
+;;              (rich-text
+;;               (-some-->
+;;                (org-element-contents hl)
+;;                (assq 'section it)
+;;                (org-element-contents it)
+;;                (org-element-map it 'src-block #'identity)
+;;                (--filter
+;;                 (member
+;;                  (org-element-property :name it)
+;;                  (-map #'symbol-name org-tj--report-attributes-rich-text))
+;;                 it)
+;;                (--map (cons (make-symbol (org-element-property :name it))
+;;                             (org-tj--src-to-rich-text it))
+;;                       it)))
+;;              (props
+;;               (-some-->
+;;                (alist-get 'report org-tj--property-attributes)
+;;                (org-tj--build-attributes it hl)
+;;                (org-tj--indent-string it)))
+;;                ;; (--map (cons it (org-element-property it hl)))
+;;                ;; (--remove (not (cdr it)))))
+;;              (attrs
+;;               (-some->>
+;;                (append rich-text)
+;;                ;; TODO add validation here?
+;;                (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
+;;                (-map #'org-tj--indent-string)
+;;                (apply #'concat)))
+;;              (inner-reports
+;;               (->> (org-tj--subheadlines hl)
+;;                    (--map (org-tj--build-report it))
+;;                    (apply #'concat)
+;;                    org-tj--indent-string)))
+;;         ;; TODO validate the report type and scream if wrong?
+;;         (if (not type) ""
+;;           (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat props attrs)
+;;                   inner-reports)))
+;;     (error "Type not specified for headline: %s"
+;;            (org-element-property :raw-value hl))))
+
+(defun org-tj--build-report (report pd)
+  (org-tj--build-declaration 'report report pd))
+
+(defun org-tj--get-report-kind (headline)
+  (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
+    (if (member kind '("text" "task" "resource")) kind
+      (error ("unknown kind: %s" kind)))
+    (->> (org-element-property :raw-value)
+         (error "kind not specified for headline \"%s\""))))
+
+(defun org-tj--build-reports (pd)
+  (-if-let (reports (org-tj--proc-data-reports pd))
+      (->> reports
+           (--map (-when-let (kind (org-tj--get-report-kind it))
+                    (->> (org-tj--build-report it pd)
+                         (format "%sreport %s" kind))))
+           (-non-nil)
+           (apply #'concat))
+    "default reports\n"))
+    ;; insert title in default reports
+    ;; (let* ((title (org-export-data (plist-get info :title) info))
+    ;;        (report-title (if (string= title "")
+    ;;                          ;; TODO why are we getting this name?
+    ;;                          (org-tj--get-name (car tasks))
+    ;;                        title)))
+    ;;   (mapconcat
+    ;;    'org-element-normalize-string
+    ;;    (--map
+    ;;     (replace-regexp-in-string "%title" report-title it t t))))
+    ;; org-tj-default-reports) "")
 
 (defun org-tj--build-resource (resource pd)
   (org-tj--build-declaration 'resource resource pd))
@@ -1290,7 +1346,8 @@ a unique id will be associated to it."
      :shift-ids (org-tj--assign-global-ids shifts)
      :resources resources
      :resource-ids (org-tj--assign-global-ids resources)
-     :reports reports)))
+     :reports reports
+     :report-ids (org-tj--assign-local-ids reports))))
 
 (defun org-tj--build-tjp-file (_contents info)
   "Build full contents of a taskjuggler project file.
@@ -1326,13 +1383,14 @@ taskjuggler syntax."
      ;;      (--map (org-tj--build-shift it info shift-ids tree))
      ;;      (apply #'concat))
      ;; 5. Insert tasks.
-     (org-tj--build-tasks pd))))
+     (org-tj--build-tasks pd)
      ;; (->> (org-tj--proc-data-tasks pd)
      ;;      (--map (org-tj--build-task it pd))
      ;;      (--map (format (format "task %s" it)))
      ;;      (apply #'concat)))))
      ;; 6. Insert reports.  If no report is defined, insert default
      ;;    reports.
+     (org-tj--build-reports pd))))
      ;; (if reports
      ;;     (mapconcat
      ;;      (lambda (report) (org-tj--build-report report))
