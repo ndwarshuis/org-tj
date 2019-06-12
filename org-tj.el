@@ -1058,71 +1058,14 @@ days from now."
           (--map (format (format "account %s" it)))
           (apply #'concat)))
 
-;; (defun org-tj--build-account (account info account-ids tree)
-;;   "Return an account declaration."
-;;   (let* ((id (org-tj--get-id account account-ids))
-;;          (name (org-tj--get-name account))
-;;          (credits (-some->>
-;;                    (org-element-property :CREDITS account)
-;;                    (format "credits %s")))
-;;          (aggregate (-some->>
-;;                      (org-element-property :AGGREGATE account)
-;;                      (format "aggregate %s")))
-;;          (balance (-some->>
-;;                     (org-element-property :CREDITS account)
-;;                     (format "credits %s")))
-;;          (flags (-some->>
-;;                     (org-element-property :FLAGS account)
-;;                     (format "flags %s")))
-;;          (inner-accounts
-;;           (-some->>
-;;            (org-tj--subheadlines account)
-;;            ;; skip over any inner accounts that have an ignore tag
-;;            (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-;;            (--map (org-tj--build-account it info account-ids tree))
-;;            (apply #'concat)))
-;;          (attrs
-;;           (-some->>
-;;            (list credits aggregate balance inner-accounts)
-;;            (-non-nil)
-;;            (s-join "\n")
-;;            (org-tj--indent-string))))
-;;     (if (not attrs) (format "account %s \"%s\"\n" id name)
-;;       (format "account %s \"%s\" {\n%s\n}\n" id name attrs))))
+(defun org-tj--build-shift (shift pd)
+  (org-tj--build-declaration 'shift shift pd))
 
-(defun org-tj--build-shift (shift info shift-ids tree)
-  "Return a shift declaration."
-  (let* ((id (org-tj--get-id shift shift-ids))
-         (name (org-tj--get-name shift))
-         (leaves (-some->>
-                  (org-element-property :LEAVES shift)
-                  (format "leaves %s")))
-         ;; TODO replace needs something like 'milestone' where
-         ;; some property activates the presence of the word 'replace'
-         (timezone (-some->>
-                    (org-element-property :TIMEZONE shift)
-                    (format "timezone %s")))
-         (vacation (-some->>
-                    (org-element-property :VACATION shift)
-                    (format "vacation %s")))
-         (workinghours (-some->>
-                        (org-element-property :WORKINGHOURS shift)
-                        (format "workinghours %s")))
-         (inner-shifts
-          (-some->>
-           (org-tj--subheadlines shift)
-           ;; skip over any inner shifts that have an ignore tag
-           (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-           (--map (org-tj--build-shift it info shift-ids tree))
-           (apply #'concat)))
-         (attrs
-          (-some->>
-           (list leaves timezone vacation workinghours inner-shifts)
-           (-non-nil)
-           (s-join "\n")
-           (org-tj--indent-string))))
-    (if (not attrs) (format "shift %s \"%s\"\n" id name)
-      (format "shift %s \"%s\" {\n%s\n}\n" id name attrs))))
+(defun org-tj--build-shifts (pd)
+  (->> (org-tj--proc-data-shifts pd)
+       (--map (org-tj--build-shift it pd))
+       (--map (format (format "shift %s" it)))
+       (apply #'concat)))
 
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
@@ -1379,6 +1322,7 @@ taskjuggler syntax."
      ;;      (--map (org-tj--build-account it info account-ids tree))
      ;;      (apply #'concat))
      ;; insert shifts
+     (org-tj--build-shifts pd)
      ;; (->> shifts
      ;;      (--map (org-tj--build-shift it info shift-ids tree))
      ;;      (apply #'concat))
