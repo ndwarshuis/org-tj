@@ -42,9 +42,6 @@
 
 ;;; constants
 
-(defconst org-tj--report-attributes-rich-text
-  '(caption center epilog footer header headline left prolog right))
-
 (defconst org-tj--property-attributes
   `((report
      ;; :TJ3_accountreport (not fully tested)
