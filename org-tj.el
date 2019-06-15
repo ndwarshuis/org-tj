@@ -40,130 +40,6 @@
 (require 'ox)
 (eval-when-compile (require 'cl-lib))
 
-;;; constants
-
-(defconst org-tj--property-attributes
-  `((report
-     ;; :TJ3_accountreport (not fully tested)
-     (accountroot . :TJ3_ACCOUNTROOT)
-     ;; . :TJ3_auxdir (not fully tested)
-     (balance . :TJ3_BALANCE)
-     (caption . ,(-partial #'org-tj--get-rich-text "caption"))
-     (center . ,(-partial #'org-tj--get-rich-text "center"))
-     (columns . :TJ3_COLUMNS)
-     (currencyformat . :TJ3_CURRENCYFORMAT)
-     (end . ,(-partial #'org-tj--get-rich-text "end"))
-     (epilog . ,(-partial #'org-tj--get-rich-text "epilog"))
-     ;; . :TJ3_EXPORT (not implemented)
-     (flags . :TJ3_FLAGS)
-     (footer . ,(-partial #'org-tj--get-rich-text "footer"))
-     (formats . :TJ3_FORMATS)
-     (header . ,(-partial #'org-tj--get-rich-text "header"))
-     (headline . ,(-partial #'org-tj--get-rich-text "headline"))
-     (height . :TJ3_HEIGHT)
-     (hideaccount . :TJ3_HIDEACCOUNT)
-     (hidejournalentry . :TJ3_HIDEJOURNALENTRY)
-     (hideresource . :TJ3_HIDERESOURCE)
-     (hidetask . :TJ3_HIDETASK)
-     (journalattributes . :TJ3_JOURNALATTRIBUTES)
-     (journalmode . :TJ3_JOURNALMODE)
-     (left . ,(-partial #'org-tj--get-rich-text "left"))
-     (loadunit . :TJ3_LOADUNIT)
-     (numberformat . :TJ3_NUMBERFORMAT)
-     ;; . :TJ3_OPENNODES (internal use only)
-     (period . :TJ3_PERIOD)
-     (prolog . ,(-partial #'org-tj--get-rich-text "prolog"))
-     (purge . :TJ3_PURGE)
-     (rawhtmlhead . :TJ3_RAWHTMLHEAD)
-     (resourcereport . org-tj--get-resourcereports)
-     (right . ,(-partial #'org-tj--get-rich-text "right"))
-     (rollupaccount . :TJ3_ROLLUPACCOUNT)
-     (rollupresource . :TJ3_ROLLUPRESOURCE)
-     (rolluptask . :TJ3_ROLLUPTASK)
-     (scenarios . :TJ3_SCENARIOS)
-     (selfcontained . :TJ3_SELFCONTAINED)
-     (sortaccounts . :TJ3_SORTACCOUNTS)
-     (sortjournalentries . :TJ3_SORTJOURNALENTRIES)
-     (sortresources . :TJ3_SORTRESOURCES)
-     (sorttasks . :TJ3_SORTTASKS)
-     (start . org-tj--get-start)
-     (taskreport . org-tj--get-taskreports)
-     (taskroot . :TJ3_TASKROOT)
-     (textreport . org-tj--get-textreports)
-     (timeformat . :TJ3_TIMEFORMAT)
-     (timezone . :TJ3_TIMEZONE)
-     (title . :TJ3_TITLE)
-     ;; . :TJ3_TRACEREPORT (not implemented)
-     (width . :TJ3_WIDTH))
-    (task
-     ;; . :TJ3_ADOPT (experimental)
-     (allocate . :TJ3_ALLOCATE)
-     (booking . :TJ3_BOOKING)
-     (charge . :TJ3_CHARGE)
-     (chargeset . :TJ3_CHARGESET)
-     (complete . org-tj--get-complete)
-     (depends . org-tj--get-depends)
-     (duration . :TJ3_DURATION)
-     (effort . org-tj--get-effort)
-     ;; . :TJ3_EFFORTDONE (not fully tested)
-     ;; . :TJ3_EFFORTLEFT (not fully tested)
-     (end . org-tj--get-end)
-     (fail . :TJ3_FAIL)
-     (flags . :TJ3_FLAGS)
-     (journalentry . :TJ3_JOURNALENTRY)
-     (length . :TJ3_LENGTH)
-     (limits . :TJ3_LIMITS)
-     (maxend . :TJ3_MAXEND)
-     (maxstart . :TJ3_MAXSTART)
-     (milestone . org-tj--get-milestone)
-     (minend . :TJ3_MINEND)
-     (minstart . :TJ3_MINSTART)
-     (note . :TJ3_NOTE)
-     (period . :TJ3_PERIOD)
-     (precedes . :TJ3_PRECEDES)
-     (priority . org-tj--get-priority)
-     (projectid . :TJ3_PROJECTID)
-     (purge . :TJ3_PURGE)
-     (responsible . :TJ3_RESPONSIBLE)
-     (scheduled . :TJ3_SCHEDULED)
-     (scheduling . :TJ3_SCHEDULING)
-     (schedulingmode . :TJ3_SCHEDULINGMODE)
-     ;; . :TJ3_SUPPLEMENT (not implemented, useless here)
-     (shift . :TJ3_SHIFTS)
-     (start . org-tj--get-start)
-     (task . org-tj--get-inner-tasks)
-     (warn . :TJ3_WARN))
-    (shift
-     (leaves . :TJ3_LEAVES)
-     (replace . :TJ3_REPLACE)
-     (timezone . :TJ3_TIMEZONE)
-     (vacation . :TJ3_VACATION)
-     (workinghours . :TJ3_WORKINGHOURS))
-    (account
-     (aggregate . :TJ3_AGGREGATE)
-     (credits . :TJ3_CREDITS)
-     (flags . :TJ3_FLAGS))
-    (resource
-     (booking . :TJ3_BOOKING)
-     (chargeset . :TJ3_CHARGESET)
-     (efficiency . :TJ3_EFFICIENCY)
-     (email . :TJ3_EMAIL)
-     (fail . :TJ3_FAIL)
-     (flag . :TJ3_FLAGS)
-     (journalentry . :TJ3_JOURNALENTRY)
-     ;; . :TJ3_LEAVEALLOWANCE (not fully tested)
-     (leaves . :TJ3_LEAVES)
-     (limits . :TJ3_LIMITS)
-     (managers . :TJ3_MANAGERS)
-     (purge . :TJ3_PURGE)
-     (rate . :TJ3_RATE)
-     (shifts . :TJ3_SHIFTS)
-     ;; . :TJ3_SUPPLEMENT (not implemented, useless here)
-     (vacation . :TJ3_VACATION)
-     (warn . :TJ3_WARN)
-     (workinghours . :TJ3_WORKINGHOURS)))
-  "Taskjuggler attributes that are valid as headline properties.")
-
 ;;; User Variables
 
 (defgroup org-tj3 nil
@@ -422,6 +298,19 @@ Return value is an alist between headlines and their associated ID."
       (->> (org-tj--generate-ids filtered-headlines)
            (--zip-with (cons it other) filtered-headlines)))))
 
+(defun org-tj--assign-names (headlines)
+  (cl-labels
+      ((filter-headlines
+        (hs)
+        (-when-let (filtered-hs (org-tj--filter-headlines hs))
+          (->> (--map (filter-headlines (org-tj--subheadlines it))
+                      filtered-hs)
+               (apply #'append)
+               (append filtered-hs)))))
+    (let ((filtered-headlines (filter-headlines headlines)))
+      (->> (-map #'org-tj--get-name filtered-headlines)
+           (--zip-with (cons it other) filtered-headlines)))))
+
 (defun org-tj--assign-local-ids (headlines)
   "Assign a locally unique ID to each in HEADLINES.
 HEADLINES is a list of headlines which may contain subheadlines.
@@ -501,6 +390,13 @@ doesn't have any end date defined."
    (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
    (--map (funcall fun it pd))))
 
+(defun org-tj--get-inner-declaration (type headline pd)
+  (let ((attr-table (alist-get type org-tj--property-attributes)))
+    (->>
+     (org-tj--subheadlines headline)
+     (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+     (--map (org-tj--build-declaration attr-table it pd)))))
+
 (defun org-tj--get-inner-tasks (headline pd)
   (org-tj--get-inner #'org-tj--build-task headline pd))
 
@@ -522,11 +418,11 @@ doesn't have any end date defined."
 
 (defun org-tj--get-depends (headline pd)
   (let ((tree (org-tj--proc-data-tree pd))
-        (ids (org-tj--proc-data-task-ids pd)))
+        (ids (org-tj--proc-data-ids pd)))
     (-when-let (depends (org-tj--resolve-dependencies headline tree))
       (org-tj--format-dependencies depends headline ids))))
 
-(defun org-tj--get-rich-text (attribute headline pd)
+(defun org-tj--get-rich-text (attribute headline _pd)
   (-some-->
    (org-element-contents headline)
    (assq 'section it)
@@ -602,32 +498,19 @@ ID is a string."
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
-(defun org-tj--file-keywords-list-format (keywords key &optional
-                                                   alt-key bracket?)
-  (-if-let (list (-some-->
-                  (--filter (equal key (car it)) keywords)
-                  (-map #'cdr it)
-                  (if bracket? (format "{ %s }" (s-join " " it))
-                    (s-join ", " it))))
-      (format "%s %s\n" (or alt-key (downcase key)) list)
-    ""))
+(defun org-tj--get-kw-list (pd key &optional sep)
+  (let ((sep (cond
+              ((numberp sep) (concat ",\n" (s-repeat sep " ")))
+              ((stringp sep) sep)
+              (t ", "))))
+    (-some--> (org-tj--proc-data-keywords pd)
+              (--filter (equal key (car it)) it)
+              (-map #'cdr it)
+              (s-join sep it))))
 
-(defun org-tj--file-keywords-first-format (keywords key &optional
-                                                     alt-key
-                                                     default-val)
-  (-if-let (val (or (alist-get key keywords nil nil #'equal)
-                    default-val))
-      (format "%s %s\n" (or alt-key (downcase key)) val)
-    ""))
-
-(defun org-tj--file-keywords-all-format (keywords key &optional
-                                                     alt-key)
-  (or (-some->>
-       (--filter (equal key (car it)) keywords)
-       (-map #'cdr)
-       (--map (format "%s %s\n" (or alt-key (downcase key)) it))
-       (s-join ""))
-      ""))
+(defun org-tj--get-kw (pd key &optional default)
+  (-when-let (kws (org-tj--proc-data-keywords pd))
+      (alist-get key kws default nil #'equal)))
 
 (defun org-tj--file-tj3-keywords (tree)
   "Return toplevel taskjuggler file keywords from buffer parse TREE."
@@ -642,86 +525,271 @@ ID is a string."
        (--map (cons (substring (org-element-property :key it) 4)
                     (org-element-property :value it)))))
 
-(defun org-tj--file-project-keywords (keywords)
-  (->> (--filter (s-starts-with? "PROJ_" (car it)) keywords)
-       (--map (cons (s-chop-prefix "PROJ_" (car it))
-                    (cdr it)))))
+(defun org-tj--get-project-id (pd)
+  (let* ((info (org-tj--proc-data-info pd))
+         (kws (org-tj--proc-data-keywords pd))
+         (alt-id (--> (plist-get info :input-buffer)
+                      (f-no-ext it)
+                      ;; TODO this is likely incomplete
+                      (s-replace "-" "_" it))))
+    (alist-get "ID" kws alt-id nil #'equal)))
 
-(defun org-tj--file-project-id (project-keywords info)
-  (let ((alt-id (--> (plist-get info :input-buffer)
-                     (f-no-ext it)
-                     ;; TODO this is likely incomplete
-                     (s-replace "-" "_" it))))
-    (alist-get "ID" project-keywords alt-id nil #'equal)))
+(defun org-tj--get-project-version (pd)
+  (->> (org-tj--get-kw pd "VERSION" org-tj-default-project-version)
+       (format "\"%s\"")))
 
-(defun org-tj--file-project-version (project-keywords)
-  (alist-get "VERSION" project-keywords
-             org-tj-default-project-version nil #'equal))
+(defun org-tj--get-project-name (pd)
+  (->> (org-tj--get-kw pd "NAME")
+       (format "\"%s\"")))
 
-(defun org-tj--file-project-name (project-keywords)
-  (alist-get "NAME" project-keywords "" nil #'equal))
-
-(defun org-tj--file-project-start (project-keywords tasks)
+(defun org-tj--get-project-start (pd)
   ;; TODO the first task may not have a start date
   ;; TODO convert org timestamps to tj3 format
-  (let ((default (or (org-tj--get-start (car tasks))
+  (let ((default (or (-some->>
+                      (org-tj--proc-data-tasks pd)
+                      (car)
+                      (org-tj--get-start))
                      (format-time-string "%Y-%m-%d"))))
-    (alist-get "START" project-keywords default nil #'equal)))
+    (org-tj--get-kw pd "START" default)))
 
-(defun org-tj--file-project-end (project-keywords tasks)
+(defun org-tj--get-project-end (pd)
   ;; TODO the first task may not have an date
   ;; TODO convert org timestamps to tj3 format
-  (let ((default (or (-some->> (org-tj--get-end (car tasks))
-                               (format "- %s"))
-                     (format "+%sd" org-tj-default-project-duration))))
-    (alist-get "END" project-keywords default nil #'equal)))
+  (let ((default
+          (or (-some->>
+               (org-tj--proc-data-tasks pd)
+               (car)
+               (org-tj--get-end)
+               (format "- %s"))
+              (format "+%sd" org-tj-default-project-duration))))
+    (org-tj--get-kw pd "END" default)))
 
-(defun org-tj--file-project-attributes (project-keywords)
+(defun org-tj--format-attrs (attrs)
+  (-some->> attrs
+            (--map (s-join " " it))
+            (s-join "\n")
+            (org-tj--indent-string)
+            (format "{\n%s\n}")))
+
+(defun org-tj--get-project-attributes (pd)
   ;; TODO set the default for this
-  (let* ((file-attrs
-          (->> (--filter (equal "ATTRIBUTE" (car it)) project-keywords)
+  (let* ((kw-attrs
+          (->> (org-tj--proc-data-keywords pd)
+               (--filter (equal "ATTRIBUTE" (car it)))
                (-map #'cdr)
                (--map (let ((s (s-split-up-to " " it 1 t)))
-                        (cons (car s) (car (cdr s)))))))
+                        (cons (car s) (-drop 1 s))))))
          (default-attrs
            (--> org-tj-default-attributes
-                (--remove (assoc-string (car it) file-attrs) it))))
-    (->> (append file-attrs default-attrs)
-         (--map (format "%s %s" (car it) (cdr it)))
-         (s-join "\n"))))
+                (--remove (assoc-string (car it) kw-attrs) it))))
+    (org-tj--format-attrs (append kw-attrs default-attrs))))
 
-(defun org-tj--file-copyright (keywords)
+(defun org-tj--get-copyright (pd)
   ;; TODO add default
-  (org-tj--file-keywords-first-format keywords "COPYRIGHT" nil ""))
+  (org-tj--get-kw pd "COPYRIGHT"))
 
-(defun org-tj--file-balance (keywords)
+(defun org-tj--get-balance (pd)
   ;; TODO add default
-  (org-tj--file-keywords-first-format keywords "BALANCE" nil ""))
+  (org-tj--get-kw pd "BALANCE"))
 
-(defun org-tj--file-rate (keywords)
+(defun org-tj--get-rate (pd)
   ;; TODO add default
-  (org-tj--file-keywords-first-format keywords "RATE" nil ""))
+  (org-tj--get-kw pd "RATE"))
 
-(defun org-tj--file-navigator (keywords)
-  (-if-let (nav (-some-->
-                   (alist-get "NAVIGATOR" keywords "" nil #'equal)
+(defun org-tj--get-navigator (pd)
+  (-when-let (nav (-some-->
+                   (org-tj--proc-data-keywords pd)
+                   (alist-get "NAVIGATOR" it "" nil #'equal)
                    (s-split " " it t)))
-      (cl-case (length nav)
-        (1 (format "navigator %s\n" (nth 0 nav)))
-        (2 (format "navigator %s { %s }\n" (nth 0 nav) (nth 1 nav)))
-        (t (error "Invalid navbar specification: %s" nav)))
-    ""))
+    (cl-case (length nav)
+      (1 (nth 0 nav))
+      (2 (format "%s { %s }" (nth 0 nav) (nth 1 nav)))
+      (t (error "Invalid navbar specification: %s" nav)))))
 
-(defun org-tj--file-vacation-format (keywords)
-  (org-tj--file-keywords-all-format keywords "VACATION"))
+(defun org-tj--get-vacation (pd)
+  (org-tj--get-kw-list pd "VACATION" 9))
 
-(defun org-tj--file-flags-format (keywords)
-  (org-tj--file-keywords-list-format keywords "FLAG" "flags"))
+(defun org-tj--get-flags (pd)
+  (org-tj--get-kw-list pd "FLAG" 6))
 
-;; TODO this actually needs to be in {}
-(defun org-tj--file-limits-format (keywords)
-  (org-tj--file-keywords-list-format keywords "LIMIT" "limits" t))
+(defun org-tj--get-leaves (pd)
+  (org-tj--get-kw-list pd "LEAVE" 7))
 
+(defun org-tj--get-limit (pd)
+  (-some->> (org-tj--get-kw-list pd "LIMIT" " ") (format "{ %s }")))
+
+(defconst org-tj--kw--elements
+  '((project org-tj--get-project-id
+             org-tj--get-project-name
+             org-tj--get-project-version
+             org-tj--get-project-start
+             org-tj--get-project-end
+             org-tj--get-project-attributes)
+    (copyright org-tj--get-copyright)
+    (vacation org-tj--get-vacation)
+    (flags org-tj--get-flags)
+    (balance org-tj--get-balance)
+    (leaves org-tj--get-leaves)
+    (rate org-tj--get-rate)
+    (navigator org-tj--get-navigator)
+    (limits org-tj--get-limit)))
+
+(defconst org-tj--property-attributes "")
+
+(setq org-tj--property-attributes
+      (let
+          ((account
+            `((account . ,(-partial #'org-tj--get-inner-declaration 'account))
+              (aggregate . :TJ3_AGGREGATE)
+              (credits . :TJ3_CREDITS)
+              (flags . :TJ3_FLAGS)))
+           (shift
+            `((leaves . :TJ3_LEAVES)
+              (replace . :TJ3_REPLACE)
+              (shift . ,(-partial #'org-tj--get-inner-declaration 'shift))
+              (timezone . :TJ3_TIMEZONE)
+              (vacation . :TJ3_VACATION)
+              (workinghours . :TJ3_WORKINGHOURS)))
+           (resource
+            ;; leaveallowance and supplement not implemented
+            `((booking . :TJ3_BOOKING)
+              (chargeset . :TJ3_CHARGESET)
+              (efficiency . :TJ3_EFFICIENCY)
+              (email . :TJ3_EMAIL)
+              (fail . :TJ3_FAIL)
+              (flag . :TJ3_FLAGS)
+              (journalentry . :TJ3_JOURNALENTRY)
+              (leaves . :TJ3_LEAVES)
+              (limits . :TJ3_LIMITS)
+              (managers . :TJ3_MANAGERS)
+              (purge . :TJ3_PURGE)
+              (rate . :TJ3_RATE)
+              (resource . ,(-partial #'org-tj--get-inner-declaration 'resource))
+              (shifts . :TJ3_SHIFTS)
+              (vacation . :TJ3_VACATION)
+              (warn . :TJ3_WARN)
+              (workinghours . :TJ3_WORKINGHOURS)))
+           (task
+            ;; adopt, effortdone, effortleft, and supplement not
+            ;; implemented
+            `((allocate . :TJ3_ALLOCATE)
+              (booking . :TJ3_BOOKING)
+              (charge . :TJ3_CHARGE)
+              (chargeset . :TJ3_CHARGESET)
+              (complete . org-tj--get-complete)
+              (depends . org-tj--get-depends)
+              (duration . :TJ3_DURATION)
+              (effort . org-tj--get-effort)
+              (end . org-tj--get-end)
+              (fail . :TJ3_FAIL)
+              (flags . :TJ3_FLAGS)
+              (journalentry . :TJ3_JOURNALENTRY)
+              (length . :TJ3_LENGTH)
+              (limits . :TJ3_LIMITS)
+              (maxend . :TJ3_MAXEND)
+              (maxstart . :TJ3_MAXSTART)
+              (milestone . org-tj--get-milestone)
+              (minend . :TJ3_MINEND)
+              (minstart . :TJ3_MINSTART)
+              (note . :TJ3_NOTE)
+              (period . :TJ3_PERIOD)
+              (precedes . :TJ3_PRECEDES)
+              (priority . org-tj--get-priority)
+              (projectid . :TJ3_PROJECTID)
+              (purge . :TJ3_PURGE)
+              (responsible . :TJ3_RESPONSIBLE)
+              (scheduled . :TJ3_SCHEDULED)
+              (scheduling . :TJ3_SCHEDULING)
+              (schedulingmode . :TJ3_SCHEDULINGMODE)
+              (shift . :TJ3_SHIFTS)
+              (start . org-tj--get-start)
+              (task . ,(-partial #'org-tj--get-inner-declaration 'task))
+              (warn . :TJ3_WARN)))
+           (report
+            ;; accountreport, auxdir, export, opennodes, and tracereport
+            ;; not implemented
+            `((accountroot . :TJ3_ACCOUNTROOT)
+              (balance . :TJ3_BALANCE)
+              (caption . ,(-partial #'org-tj--get-rich-text "caption"))
+              (center . ,(-partial #'org-tj--get-rich-text "center"))
+              (columns . :TJ3_COLUMNS)
+              (currencyformat . :TJ3_CURRENCYFORMAT)
+              (end . ,(-partial #'org-tj--get-rich-text "end"))
+              (epilog . ,(-partial #'org-tj--get-rich-text "epilog"))
+              (flags . :TJ3_FLAGS)
+              (footer . ,(-partial #'org-tj--get-rich-text "footer"))
+              (formats . :TJ3_FORMATS)
+              (header . ,(-partial #'org-tj--get-rich-text "header"))
+              (headline . ,(-partial #'org-tj--get-rich-text "headline"))
+              (height . :TJ3_HEIGHT)
+              (hideaccount . :TJ3_HIDEACCOUNT)
+              (hidejournalentry . :TJ3_HIDEJOURNALENTRY)
+              (hideresource . :TJ3_HIDERESOURCE)
+              (hidetask . :TJ3_HIDETASK)
+              (journalattributes . :TJ3_JOURNALATTRIBUTES)
+              (journalmode . :TJ3_JOURNALMODE)
+              (left . ,(-partial #'org-tj--get-rich-text "left"))
+              (loadunit . :TJ3_LOADUNIT)
+              (numberformat . :TJ3_NUMBERFORMAT)
+              (period . :TJ3_PERIOD)
+              (prolog . ,(-partial #'org-tj--get-rich-text "prolog"))
+              (purge . :TJ3_PURGE)
+              (rawhtmlhead . :TJ3_RAWHTMLHEAD)
+              (resourcereport . ,(-partial #'org-tj--get-inner-declaration 'resourcereport))
+              (right . ,(-partial #'org-tj--get-rich-text "right"))
+              (rollupaccount . :TJ3_ROLLUPACCOUNT)
+              (rollupresource . :TJ3_ROLLUPRESOURCE)
+              (rolluptask . :TJ3_ROLLUPTASK)
+              (scenarios . :TJ3_SCENARIOS)
+              (selfcontained . :TJ3_SELFCONTAINED)
+              (sortaccounts . :TJ3_SORTACCOUNTS)
+              (sortjournalentries . :TJ3_SORTJOURNALENTRIES)
+              (sortresources . :TJ3_SORTRESOURCES)
+              (sorttasks . :TJ3_SORTTASKS)
+              (start . org-tj--get-start)
+              (taskreport . ,(-partial #'org-tj--get-inner-declaration 'taskreport))
+              (taskroot . :TJ3_TASKROOT)
+              (textreport . ,(-partial #'org-tj--get-inner-declaration 'textreport))
+              (timeformat . :TJ3_TIMEFORMAT)
+              (timezone . :TJ3_TIMEZONE)
+              (title . :TJ3_TITLE)
+              (width . :TJ3_WIDTH))))
+        `((account . ,account)
+          (shift . ,shift)
+          (resource . ,resource)
+          (task . ,task)
+          (textreport . ,report)
+          (taskreport . ,report)
+          (resourcereport . ,report))))
+
+(defun org-tj--format-headlines (pd)
+  (cl-flet
+      ((process
+        (cell)
+        (let* ((key (car cell))
+               (attr-table (cdr cell))
+               (hls (--> (format "org-tj--proc-data-%ss" key)
+                         (intern it)
+                         (funcall it pd))))
+          (-some->> hls
+                    (--map (org-tj--build-declaration attr-table it pd))
+                    (--map (format "%s %s" key it))
+                    (s-join "\n")))))
+    (->> org-tj--property-attributes
+         (-map #'process))))
+
+(defun org-tj--format-kws (pd)
+  (cl-flet
+      ((process
+        (cell)
+        (let ((name (car cell))
+              (funs (cdr cell)))
+          (->> funs
+               (--map (funcall it pd))
+               (s-join " ")
+               (format "%s %s" name)))))
+    (->> org-tj--kw--elements
+         (-map #'process))))
 
 ;;; Dependencies
 
@@ -1026,43 +1094,42 @@ parse tree of the buffer."
       (when (member org-tj-report-tag (org-element-property :tags hl))
         hl))))
 
-(defun org-tj--build-project (pd)
-  "Return a project declaration.
-PROJECT is a headline.  INFO is a plist used as a communication
-channel.  If no start date is specified, start today.  If no end
-date is specified, end `org-tj-default-project-duration'
-days from now."
-  (let* ((proj-kws (->> (org-tj--proc-data-keywords pd)
-                        (org-tj--file-project-keywords)))
-         (info (org-tj--proc-data-info pd))
-         (tasks (org-tj--proc-data-tasks pd))
-         (id (org-tj--file-project-id proj-kws info))
-         (name (org-tj--file-project-name proj-kws))
-         (version (org-tj--file-project-version proj-kws))
-         (start (org-tj--file-project-start proj-kws tasks))
-         (end (org-tj--file-project-end proj-kws tasks))
-         (attrs (org-tj--indent-string
-                 (org-tj--file-project-attributes proj-kws))))
-    (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
-            id name version start end attrs)))
+;; (defun org-tj--build-project (pd)
+;;   "Return a project declaration.
+;; PROJECT is a headline.  INFO is a plist used as a communication
+;; channel.  If no start date is specified, start today.  If no end
+;; date is specified, end `org-tj-default-project-duration'
+;; days from now."
+;;   (let* ((kws (org-tj--proc-data-keywords pd))
+;;          (info (org-tj--proc-data-info pd))
+;;          (tasks (org-tj--proc-data-tasks pd))
+;;          (id (org-tj--file-project-id kws info))
+;;          (name (org-tj--file-project-name kws))
+;;          (version (org-tj--file-project-version kws))
+;;          (start (org-tj--file-project-start kws tasks))
+;;          (end (org-tj--file-project-end kws tasks))
+;;          (attrs (org-tj--indent-string
+;;                  (org-tj--file-project-attributes kws))))
+;;     (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
+;;             id name version start end attrs)))
 
-(defun org-tj--build-account (account pd)
-  (org-tj--build-declaration 'account account pd))
+;; (defun org-tj--build-account (account pd)
+;;   (org-tj--build-declaration 'account account pd))
 
-(defun org-tj--build-accounts (pd)
-  (->> (org-tj--proc-data-accounts pd)
-          (--map (org-tj--build-account it pd))
-          (--map (format (format "account %s" it)))
-          (apply #'concat)))
+;; (defun org-tj--build-accounts (pd)
+;;   (->> (org-tj--proc-data-accounts pd)
+;;           (--map (org-tj--build-account it pd))
+;;           (--map (format (format "account %s" it)))
+;;           (apply #'concat)))
 
-(defun org-tj--build-shift (shift pd)
-  (org-tj--build-declaration 'shift shift pd))
+;; (defun org-tj--build-shift (shift pd)
+;;   (org-tj--build-declaration 'shift shift pd))
 
-(defun org-tj--build-shifts (pd)
-  (->> (org-tj--proc-data-shifts pd)
-       (--map (org-tj--build-shift it pd))
-       (--map (format (format "shift %s" it)))
-       (apply #'concat)))
+;; (defun org-tj--build-shifts (pd)
+;;   (->> (org-tj--proc-data-shifts pd)
+;;        (--map (org-tj--build-shift it pd))
+;;        (--map (format (format "shift %s" it)))
+;;        (apply #'concat)))
 
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
@@ -1072,17 +1139,19 @@ days from now."
               (val (cdr cell)))
           (cond
            ((null val) key)
-           ((listp val) (->> val
-                             (--map (format "%s %s" key it))
-                             (apply #'concat)))
+           ((listp val) (-some->> val
+                                  (--map (format "%s %s" key it))
+                                  (s-join "\n")))
            (val (format "%s %s" key val))
            (t (error "Formatting error."))))))
-    (->> attribute-alist
-         (-map #'format-attr)
-         (s-join "\n")
-         (org-tj--indent-string))))
+    ;; TODO this is redundant
+    (-some->> attribute-alist
+              (-map #'format-attr)
+              (s-join "\n")
+              (org-tj--indent-string)
+              (format "{\n%s\n}"))))
 
-(defun org-tj--build-declaration (type headline pd)
+(defun org-tj--build-declaration (attr-table headline pd)
   "Return a task declaration.
 
 TASK is a headline.  INFO is a plist used as a communication
@@ -1092,29 +1161,26 @@ All valid attributes from TASK are inserted.  If TASK defines
 a property \"task_id\" it will be used as the id for this task.
 Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
-  (let ((id (--> (symbol-name type)
-                 (format "org-tj--proc-data-%s-ids" it)
-                 (intern it)
-                 (funcall it pd)
-                 (org-tj--get-id headline it)))
-        (name (org-tj--get-name headline))
+  (let ((id (->> (org-tj--proc-data-ids pd)
+                 (org-tj--get-id headline)))
+        (name (format "\"%s\"" (org-tj--get-name headline)))
         (attrs
-         (--> (alist-get type org-tj--property-attributes)
-              (org-tj--build-attributes it headline pd)
+         (--> (org-tj--build-attributes attr-table headline pd)
               ;; TODO how to generalize this?
               ;; (if (not (assoc 'allocate it)) it
               ;;   (cons '(purge . "allocate") it))
               (org-tj--format-attributes it))))
-    (format "%s \"%s\" {\n%s\n}\n" id name attrs)))
+    (s-join " " (list id name attrs))))
+    ;; (format "%s \"%s\" {\n%s\n}" id name attrs)))
   
-(defun org-tj--build-task (task pd)
-  (org-tj--build-declaration 'task task pd))
+;; (defun org-tj--build-task (task pd)
+;;   (org-tj--build-declaration 'task task pd))
 
-(defun org-tj--build-tasks (pd)
-  (->> (org-tj--proc-data-tasks pd)
-          (--map (org-tj--build-task it pd))
-          (--map (format (format "task %s" it)))
-          (apply #'concat)))
+;; (defun org-tj--build-tasks (pd)
+;;   (->> (org-tj--proc-data-tasks pd)
+;;           (--map (org-tj--build-task it pd))
+;;           (--map (format (format "task %s" it)))
+;;           (apply #'concat)))
 
 ;; (defun org-tj--build-report (hl)
 ;;   "Create a task report definition."
@@ -1162,39 +1228,39 @@ a unique id will be associated to it."
 ;;     (error "Type not specified for headline: %s"
 ;;            (org-element-property :raw-value hl))))
 
-(defun org-tj--build-report (report pd)
-  (org-tj--build-declaration 'report report pd))
+;; (defun org-tj--build-report (report pd)
+;;   (org-tj--build-declaration 'report report pd))
 
 (defun org-tj--get-report-kind (headline)
   (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
     (if (member kind '("text" "task" "resource")) kind
-      (error ("unknown kind: %s" kind)))
+      (error "unknown kind: %s" kind))
     (->> (org-element-property :raw-value)
          (error "kind not specified for headline \"%s\""))))
 
-(defun org-tj--build-reports (pd)
-  (-if-let (reports (org-tj--proc-data-reports pd))
-      (->> reports
-           (--map (-when-let (kind (org-tj--get-report-kind it))
-                    (->> (org-tj--build-report it pd)
-                         (format "%sreport %s" kind))))
-           (-non-nil)
-           (apply #'concat))
-    "default reports\n"))
-    ;; insert title in default reports
-    ;; (let* ((title (org-export-data (plist-get info :title) info))
-    ;;        (report-title (if (string= title "")
-    ;;                          ;; TODO why are we getting this name?
-    ;;                          (org-tj--get-name (car tasks))
-    ;;                        title)))
-    ;;   (mapconcat
-    ;;    'org-element-normalize-string
-    ;;    (--map
-    ;;     (replace-regexp-in-string "%title" report-title it t t))))
-    ;; org-tj-default-reports) "")
+;; (defun org-tj--build-reports (pd)
+;;   (-if-let (reports (org-tj--proc-data-reports pd))
+;;       (->> reports
+;;            (--map (-when-let (kind (org-tj--get-report-kind it))
+;;                     (->> (org-tj--build-report it pd)
+;;                          (format "%sreport %s" kind))))
+;;            (-non-nil)
+;;            (apply #'concat))
+;;     "default reports\n"))
+;;     ;; insert title in default reports
+;;     ;; (let* ((title (org-export-data (plist-get info :title) info))
+;;     ;;        (report-title (if (string= title "")
+;;     ;;                          ;; TODO why are we getting this name?
+;;     ;;                          (org-tj--get-name (car tasks))
+;;     ;;                        title)))
+;;     ;;   (mapconcat
+;;     ;;    'org-element-normalize-string
+;;     ;;    (--map
+;;     ;;     (replace-regexp-in-string "%title" report-title it t t))))
+;;     ;; org-tj-default-reports) "")
 
-(defun org-tj--build-resource (resource pd)
-  (org-tj--build-declaration 'resource resource pd))
+;; (defun org-tj--build-resource (resource pd)
+;;   (org-tj--build-declaration 'resource resource pd))
 
 ;; (defun org-tj--build-resource (resource _info resource-ids)
 ;;   "Return a resource declaration.
@@ -1233,14 +1299,14 @@ a unique id will be associated to it."
 ;;    ;; Closing resource.
 ;;    "}\n"))
 
-(defun org-tj--build-resources (pd)
-  (-if-let (resources (org-tj--proc-data-resources pd))
-      (->> resources
-           (--map (org-tj--build-resource it pd))
-           (--map (format (format "resource %s" it)))
-           (apply #'concat))
-    (format "resource %s \"%s\"\n" (user-login-name)
-            user-full-name)))
+;; (defun org-tj--build-resources (pd)
+;;   (-if-let (resources (org-tj--proc-data-resources pd))
+;;       (->> resources
+;;            (--map (org-tj--build-resource it pd))
+;;            (--map (format (format "resource %s" it)))
+;;            (apply #'concat))
+;;     (format "resource %s \"%s\"\n" (user-login-name)
+;;             user-full-name)))
 
 (cl-defstruct (org-tj--proc-data
                (:copier nil))
@@ -1248,16 +1314,20 @@ a unique id will be associated to it."
   info
   tree
   keywords
-  tasks
-  task-ids
+  ids
   accounts
-  account-ids
   shifts
-  shift-ids
   resources
-  resource-ids
-  reports
-  report-ids)
+  tasks
+  textreports
+  taskreports
+  resourcereports)
+
+;; (cl-defstruct (org-tj--hl-data
+;;                (:copier nil))
+;;   "Data for headlines."
+;;   trees
+;;   ids)
 
 (defun org-tj--add-allocates (tasks)
   (cl-flet ((add-allocates
@@ -1266,28 +1336,35 @@ a unique id will be associated to it."
               task :TJ3_ALLOCATE (user-login-name))))
     (-map #'add-allocates tasks)))
 
+(defun org-tj--get-reports-kind (reports kind)
+  (--filter (equal kind (org-tj--get-report-kind it)) reports))
+
 (defun org-tj--make-proc-data (info)
   (let* ((tree (plist-get info :parse-tree))
-         (tasks (->> (org-tj--get-tasks tree)
-                     ))
+         (tasks (org-tj--get-tasks tree))
          (accounts (org-tj--get-accounts tree))
          (shifts (org-tj--get-shifts tree))
          (resources (org-tj--get-resource-headlines tree))
-         (reports (org-tj--get-reports tree)))
+         (reports (org-tj--get-reports tree))
+         (textreports (org-tj--get-reports-kind reports "textreport"))
+         (taskreports (org-tj--get-reports-kind reports "taskreport"))
+         (resourcereports (org-tj--get-reports-kind reports "resourcereports")))
     (make-org-tj--proc-data
      :info info
      :tree tree
      :keywords (org-tj--file-tj3-keywords tree)
+     :ids (append (org-tj--assign-global-ids accounts)
+                  (org-tj--assign-global-ids shifts)
+                  (org-tj--assign-global-ids resources)
+                  (org-tj--assign-local-ids tasks)
+                  (org-tj--assign-local-ids reports))
      :accounts accounts
-     :account-ids (org-tj--assign-global-ids accounts)
-     :tasks (if resources tasks (org-tj--add-allocates tasks))
-     :task-ids (org-tj--assign-local-ids tasks)
      :shifts shifts
-     :shift-ids (org-tj--assign-global-ids shifts)
      :resources resources
-     :resource-ids (org-tj--assign-global-ids resources)
-     :reports reports
-     :report-ids (org-tj--assign-local-ids reports))))
+     :tasks (if resources tasks (org-tj--add-allocates tasks))
+     :textreports textreports
+     :taskreports  taskreports
+     :resourcereports resourcereports)))
 
 (defun org-tj--build-tjp-file (_contents info)
   "Build full contents of a taskjuggler project file.
@@ -1296,7 +1373,7 @@ taskjuggler syntax."
   (let ((pd (org-tj--make-proc-data info)))
     (concat
      ;; insert project
-     (org-tj--build-project pd)
+     ;; (org-tj--build-project pd)
      ;; insert global properties
      ;; (org-element-normalize-string org-tj-default-global-properties)
      ;; (org-tj--file-navigator keywords)
@@ -1305,11 +1382,15 @@ taskjuggler syntax."
      ;; (org-tj--file-limits-format keywords)
      ;; (org-tj--file-vacation-format keywords)
      ;; (org-tj--file-flags-format keywords)
-     (org-tj--build-resources pd)
-     (org-tj--build-accounts pd)
-     (org-tj--build-shifts pd)
-     (org-tj--build-tasks pd)
-     (org-tj--build-reports pd))))
+     (--> (org-tj--format-kws pd)
+          (append it (org-tj--format-headlines pd))
+          (s-join "\n\n" it)))))
+
+     ;; (org-tj--build-resources pd)
+     ;; (org-tj--build-accounts pd)
+     ;; (org-tj--build-shifts pd)
+     ;; (org-tj--build-tasks pd)
+     ;; (org-tj--build-reports pd))))
 
 ;;; export functions
 
