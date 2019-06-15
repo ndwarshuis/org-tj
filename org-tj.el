@@ -1094,43 +1094,6 @@ parse tree of the buffer."
       (when (member org-tj-report-tag (org-element-property :tags hl))
         hl))))
 
-;; (defun org-tj--build-project (pd)
-;;   "Return a project declaration.
-;; PROJECT is a headline.  INFO is a plist used as a communication
-;; channel.  If no start date is specified, start today.  If no end
-;; date is specified, end `org-tj-default-project-duration'
-;; days from now."
-;;   (let* ((kws (org-tj--proc-data-keywords pd))
-;;          (info (org-tj--proc-data-info pd))
-;;          (tasks (org-tj--proc-data-tasks pd))
-;;          (id (org-tj--file-project-id kws info))
-;;          (name (org-tj--file-project-name kws))
-;;          (version (org-tj--file-project-version kws))
-;;          (start (org-tj--file-project-start kws tasks))
-;;          (end (org-tj--file-project-end kws tasks))
-;;          (attrs (org-tj--indent-string
-;;                  (org-tj--file-project-attributes kws))))
-;;     (format "project %s \"%s\" \"%s\" %s %s {\n%s\n}\n"
-;;             id name version start end attrs)))
-
-;; (defun org-tj--build-account (account pd)
-;;   (org-tj--build-declaration 'account account pd))
-
-;; (defun org-tj--build-accounts (pd)
-;;   (->> (org-tj--proc-data-accounts pd)
-;;           (--map (org-tj--build-account it pd))
-;;           (--map (format (format "account %s" it)))
-;;           (apply #'concat)))
-
-;; (defun org-tj--build-shift (shift pd)
-;;   (org-tj--build-declaration 'shift shift pd))
-
-;; (defun org-tj--build-shifts (pd)
-;;   (->> (org-tj--proc-data-shifts pd)
-;;        (--map (org-tj--build-shift it pd))
-;;        (--map (format (format "shift %s" it)))
-;;        (apply #'concat)))
-
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
       ((format-attr
@@ -1171,65 +1134,6 @@ a unique id will be associated to it."
               ;;   (cons '(purge . "allocate") it))
               (org-tj--format-attributes it))))
     (s-join " " (list id name attrs))))
-    ;; (format "%s \"%s\" {\n%s\n}" id name attrs)))
-  
-;; (defun org-tj--build-task (task pd)
-;;   (org-tj--build-declaration 'task task pd))
-
-;; (defun org-tj--build-tasks (pd)
-;;   (->> (org-tj--proc-data-tasks pd)
-;;           (--map (org-tj--build-task it pd))
-;;           (--map (format (format "task %s" it)))
-;;           (apply #'concat)))
-
-;; (defun org-tj--build-report (hl)
-;;   "Create a task report definition."
-;;   ;; assume the incoming headline is indeed a valid report
-;;   (-if-let (type (org-element-property :REPORT_KIND hl))
-;;       (let* ((name (org-element-property :raw-value hl))
-;;              (id (org-element-property :CUSTOM_ID hl))
-;;              (rich-text
-;;               (-some-->
-;;                (org-element-contents hl)
-;;                (assq 'section it)
-;;                (org-element-contents it)
-;;                (org-element-map it 'src-block #'identity)
-;;                (--filter
-;;                 (member
-;;                  (org-element-property :name it)
-;;                  (-map #'symbol-name org-tj--report-attributes-rich-text))
-;;                 it)
-;;                (--map (cons (make-symbol (org-element-property :name it))
-;;                             (org-tj--src-to-rich-text it))
-;;                       it)))
-;;              (props
-;;               (-some-->
-;;                (alist-get 'report org-tj--property-attributes)
-;;                (org-tj--build-attributes it hl)
-;;                (org-tj--indent-string it)))
-;;                ;; (--map (cons it (org-element-property it hl)))
-;;                ;; (--remove (not (cdr it)))))
-;;              (attrs
-;;               (-some->>
-;;                (append rich-text)
-;;                ;; TODO add validation here?
-;;                (--map (format "%s %s\n" (symbol-name (car it)) (cdr it)))
-;;                (-map #'org-tj--indent-string)
-;;                (apply #'concat)))
-;;              (inner-reports
-;;               (->> (org-tj--subheadlines hl)
-;;                    (--map (org-tj--build-report it))
-;;                    (apply #'concat)
-;;                    org-tj--indent-string)))
-;;         ;; TODO validate the report type and scream if wrong?
-;;         (if (not type) ""
-;;           (format "%s %s \"%s\" {\n%s%s}\n" type id name (concat props attrs)
-;;                   inner-reports)))
-;;     (error "Type not specified for headline: %s"
-;;            (org-element-property :raw-value hl))))
-
-;; (defun org-tj--build-report (report pd)
-;;   (org-tj--build-declaration 'report report pd))
 
 (defun org-tj--get-report-kind (headline)
   (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
@@ -1237,76 +1141,6 @@ a unique id will be associated to it."
       (error "unknown kind: %s" kind))
     (->> (org-element-property :raw-value)
          (error "kind not specified for headline \"%s\""))))
-
-;; (defun org-tj--build-reports (pd)
-;;   (-if-let (reports (org-tj--proc-data-reports pd))
-;;       (->> reports
-;;            (--map (-when-let (kind (org-tj--get-report-kind it))
-;;                     (->> (org-tj--build-report it pd)
-;;                          (format "%sreport %s" kind))))
-;;            (-non-nil)
-;;            (apply #'concat))
-;;     "default reports\n"))
-;;     ;; insert title in default reports
-;;     ;; (let* ((title (org-export-data (plist-get info :title) info))
-;;     ;;        (report-title (if (string= title "")
-;;     ;;                          ;; TODO why are we getting this name?
-;;     ;;                          (org-tj--get-name (car tasks))
-;;     ;;                        title)))
-;;     ;;   (mapconcat
-;;     ;;    'org-element-normalize-string
-;;     ;;    (--map
-;;     ;;     (replace-regexp-in-string "%title" report-title it t t))))
-;;     ;; org-tj-default-reports) "")
-
-;; (defun org-tj--build-resource (resource pd)
-;;   (org-tj--build-declaration 'resource resource pd))
-
-;; (defun org-tj--build-resource (resource _info resource-ids)
-;;   "Return a resource declaration.
-
-;; RESOURCE is a headline.  INFO is a plist used as a communication
-;; channel.
-
-;; All valid attributes from RESOURCE are inserted.  If RESOURCE
-;; defines a property \"resource_id\" it will be used as the id for
-;; this resource.  Otherwise it will use the ID property.  If
-;; neither is defined a unique id will be associated to it."
-;;   (concat
-;;    ;; Opening resource.
-;;    (format "resource %s \"%s\" {\n"
-;;            (org-tj--clean-id
-;;             (or (org-element-property :RESOURCE_ID resource)
-;;                 (org-element-property :ID resource)
-;;                 (org-tj--get-id resource resource-ids)))
-;;            (org-tj--get-name resource))
-;;    ;; Add attributes.
-;;    (->> (alist-get 'resource org-tj--property-attributes)
-;;         (org-tj--build-attributes resource)
-;;         (org-tj--indent-string))
-;;    ;; Add inner resources.
-;;    (->> (org-tj--subheadlines resource)
-;;         (--map (org-tj--build-resource it nil resource-ids))
-;;         (apply #'concat)
-;;         org-tj--indent-string)
-;;    ;; (org-tj--indent-string
-;;    ;;  (mapconcat
-;;    ;;   'identity
-;;    ;;   (org-element-map (org-element-contents resource) 'headline
-;;    ;;     (lambda (hl) (org-tj--build-resource hl info resource-ids))
-;;    ;;     nil nil 'headline)
-;;    ;;   ""))
-;;    ;; Closing resource.
-;;    "}\n"))
-
-;; (defun org-tj--build-resources (pd)
-;;   (-if-let (resources (org-tj--proc-data-resources pd))
-;;       (->> resources
-;;            (--map (org-tj--build-resource it pd))
-;;            (--map (format (format "resource %s" it)))
-;;            (apply #'concat))
-;;     (format "resource %s \"%s\"\n" (user-login-name)
-;;             user-full-name)))
 
 (cl-defstruct (org-tj--proc-data
                (:copier nil))
@@ -1322,12 +1156,6 @@ a unique id will be associated to it."
   textreports
   taskreports
   resourcereports)
-
-;; (cl-defstruct (org-tj--hl-data
-;;                (:copier nil))
-;;   "Data for headlines."
-;;   trees
-;;   ids)
 
 (defun org-tj--add-allocates (tasks)
   (cl-flet ((add-allocates
@@ -1372,25 +1200,9 @@ INFO is a plist holding export options. Return formatted string in
 taskjuggler syntax."
   (let ((pd (org-tj--make-proc-data info)))
     (concat
-     ;; insert project
-     ;; (org-tj--build-project pd)
-     ;; insert global properties
-     ;; (org-element-normalize-string org-tj-default-global-properties)
-     ;; (org-tj--file-navigator keywords)
-     ;; (org-tj--file-copyright keywords)
-     ;; (org-tj--file-rate keywords)
-     ;; (org-tj--file-limits-format keywords)
-     ;; (org-tj--file-vacation-format keywords)
-     ;; (org-tj--file-flags-format keywords)
      (--> (org-tj--format-kws pd)
           (append it (org-tj--format-headlines pd))
           (s-join "\n\n" it)))))
-
-     ;; (org-tj--build-resources pd)
-     ;; (org-tj--build-accounts pd)
-     ;; (org-tj--build-shifts pd)
-     ;; (org-tj--build-tasks pd)
-     ;; (org-tj--build-reports pd))))
 
 ;;; export functions
 
