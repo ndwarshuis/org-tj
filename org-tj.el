@@ -406,6 +406,73 @@ doesn't have any end date defined."
      (--filter (equal kind (org-tj--get-report-kind it)))
      (--map (org-tj--build-declaration attr-table it pd)))))
 
+(defun org-tj--resolve-dependencies (task tree pd)
+  "Return a list of all tasks on which TASK depends."
+  ;; TODO add blocker eventually, baby steps
+  (let* ((deps-ids (-some->>
+                    (org-element-property :TJ3_DEPENDS task)
+                    (s-replace-regexp "{.*}" "")
+                    (s-split ",")
+                    (-map #'s-trim)))
+         (wants-prev-sibling?
+          (and
+           (member-ignore-case "previous-sibling" deps-ids)
+           (not (org-export-first-sibling-p task nil))))
+         (is-ordered?
+          (and
+           (org-element-property :ORDERED (org-export-get-parent task))
+           (not (org-export-first-sibling-p task nil))))
+         (prev-task
+          (when (or wants-prev-sibling? is-ordered?)
+            (list (org-export-get-previous-element task nil))))
+         (depends
+          (if (not deps-ids) prev-task
+            (--> (org-tj--proc-data-tasks pd)
+                 (org-element-map it 'headline
+                   (lambda (task)
+                     (-when-let (task-id
+                                 (or (org-element-property :TJ3_ID task)
+                                     (org-element-property :ID task)))
+                       (when (member task-id deps-ids) task))))
+                 (append prev-task it)
+                 (-non-nil it)
+                 (-uniq it)))))
+    depends))
+
+(defun org-tj--format-dependencies (dependencies task ids)
+  "Format DEPENDENCIES to match TaskJuggler syntax.
+DEPENDENCIES is list of dependencies for TASK, as returned by
+`org-tj-resolve-depedencies'.  TASK is a headline.
+INFO is a plist used as a communication channel.  Return value
+doesn't include leading \"depends\"."
+  (let* ((dep-list (-some->> (org-element-property :TJ3_DEPENDS task)
+                             (s-split ",")))
+         (block-list (-some->> (org-element-property :BLOCKER task)
+                               (s-split ",")))
+         (dep-alist
+          (->> (append dep-list block-list)
+               (-non-nil)
+               (--map (let* ((slice (s-split-up-to " " it 1))
+                             (dep (nth 0 slice))
+                             (attrs (nth 1 slice)))
+                        (if attrs (cons dep attrs) dep))))))
+    (cl-labels
+        ((get-parent-ids
+          (headline)
+          (-when-let (parent (org-export-get-parent headline))
+            (-when-let (id (org-tj--get-id parent ids))
+              (cons id (get-parent-ids parent)))))
+         (get-path
+          (dep)
+          (let* ((id (org-tj--get-id dep ids))
+                 (parent-ids (reverse (get-parent-ids dep)))
+                 (path (s-join "." (append parent-ids (list id)))))
+            (-if-let (attributes (alist-get id dep-alist nil nil #'equal))
+                (format "%s %s" path attributes)
+              path))))
+      (-some->> (-map #'get-path dependencies)
+                (s-join ", ")))))
+
 (defun org-tj--get-depends (headline pd)
   (let ((tree (org-tj--proc-data-tree pd))
         (ids (org-tj--proc-data-ids pd)))
@@ -902,76 +969,9 @@ ID is a string."
 
 ;; TODO combine this with the formatter, no reason to keep them
 ;; separate
-(defun org-tj--resolve-dependencies (task tree pd)
-  "Return a list of all tasks on which TASK depends."
-  ;; TODO add blocker eventually, baby steps
-  (let* ((deps-ids (-some->>
-                    (org-element-property :TJ3_DEPENDS task)
-                    (s-replace-regexp "{.*}" "")
-                    (s-split ",")
-                    (-map #'s-trim)))
-         (wants-prev-sibling?
-          (and
-           (member-ignore-case "previous-sibling" deps-ids)
-           (not (org-export-first-sibling-p task nil))))
-         (is-ordered?
-          (and
-           (org-element-property :ORDERED (org-export-get-parent task))
-           (not (org-export-first-sibling-p task nil))))
-         (prev-task
-          (when (or wants-prev-sibling? is-ordered?)
-            (list (org-export-get-previous-element task nil))))
-         (depends
-          (if (not deps-ids) prev-task
-            (--> (org-tj--proc-data-tasks pd)
-                 (org-element-map it 'headline
-                   (lambda (task)
-                     (-when-let (task-id
-                                 (or (org-element-property :TJ3_ID task)
-                                     (org-element-property :ID task)))
-                       (when (member task-id deps-ids) task))))
-                 (append prev-task it)
-                 (-non-nil it)
-                 (-uniq it)))))
-    depends))
 
-(defun org-tj--format-dependencies (dependencies task task-ids)
-  "Format DEPENDENCIES to match TaskJuggler syntax.
-DEPENDENCIES is list of dependencies for TASK, as returned by
-`org-tj-resolve-depedencies'.  TASK is a headline.
-INFO is a plist used as a communication channel.  Return value
-doesn't include leading \"depends\"."
-  (let* ((dep-str (format "%s %s"
-                          (org-element-property :BLOCKER task)
-                          (org-element-property :TJ3_DEPENDS task)))
-         (get-path
-          (lambda (dep)
-            ;; Return path to DEP relatively to TASK.
-            (let ((parent (org-export-get-parent task))
-                  (exclamations 1)
-                  (option
-                   (let ((id (org-element-property :TJ3_ID dep)))
-                     (and id
-                          (string-match (concat id " +\\({.*?}\\)") dep-str)
-                          (match-string-no-properties 1 dep-str))))
-                  path)
-              ;; Compute number of exclamation marks by looking for the
-              ;; common ancestor between TASK and DEP.
-              (while (not (org-element-map parent 'headline
-                            (lambda (hl) (eq hl dep))))
-                (incf exclamations)
-                (setq parent (org-export-get-parent parent)))
-              ;; Build path from DEP to PARENT.
-              (while (not (eq parent dep))
-                (push (org-tj--get-id dep task-ids) path)
-                (setq dep (org-export-get-parent dep)))
-              ;; Return full path.  Add dependency options, if any.
-              (concat (make-string exclamations ?!)
-                      (mapconcat 'identity path ".")
-                      (and option (concat " " option)))))))
-    ;; Return dependencies string, without the leading "depends".
-    (-some->> (--map (funcall get-path it) dependencies)
-              (s-join ", "))))
+
+
 
 ;;; Translator Functions
 
