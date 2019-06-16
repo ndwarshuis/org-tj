@@ -327,11 +327,83 @@ siblings."
          (--zip-with (cons it other) filtered-headlines)
          (append inner-ids))))
 
-;;; Accessors
+;;; headline attributes
 
-(defun org-tj--get-id (item ids)
+(defun org-tj--build-attributes (attr-alist headline pd)
+  "Return attributes string for HEADLINE.
+ATTRIBUTES is a list of symbols representing valid attributes
+for HEADLINE as keywords."
+  ;; TODO add validation here for attributes in headline that start
+  ;; with TJ3_ but are not valid
+  (cl-flet
+      ((eval-attr
+        (attr-data)
+        (let* ((name (car attr-data))
+               (action (cdr attr-data))
+               (value
+                (cond
+                 ((functionp action)
+                  (funcall action headline pd))
+                 ((keywordp action)
+                  (org-element-property action headline))
+                 (t (error "Unknown action: %s" action)))))
+          (cond
+           ((eq t value) (list name))
+           (value (cons name value))))))
+    (->> (--map (eval-attr it) attr-alist)
+         (-non-nil))))
+
+(defun org-tj--format-attributes (attribute-alist)
+  (cl-flet
+      ((format-attr
+        (cell)
+        (let ((key (symbol-name (car cell)))
+              (val (cdr cell)))
+          (cond
+           ((null val) key)
+           ((listp val) (-some->> val
+                                  (--map (format "%s %s" key it))
+                                  (s-join "\n")))
+           (val (format "%s %s" key val))
+           (t (error "Formatting error."))))))
+    ;; TODO this is redundant
+    (-some->> attribute-alist
+              (-map #'format-attr)
+              (s-join "\n")
+              (org-tj--indent-string)
+              (format "{\n%s\n}"))))
+
+(defun org-tj--build-declaration (attr-table headline pd)
+  "Return a task declaration.
+
+TASK is a headline.  INFO is a plist used as a communication
+channel.
+
+All valid attributes from TASK are inserted.  If TASK defines
+a property \"task_id\" it will be used as the id for this task.
+Otherwise it will use the ID property.  If neither is defined
+a unique id will be associated to it."
+  (let ((id (->> (org-tj--proc-data-ids pd)
+                 (org-tj--get-id headline)))
+        (name (format "\"%s\"" (org-tj--get-name headline)))
+        (attrs
+         (--> (org-tj--build-attributes attr-table headline pd)
+              ;; TODO how to generalize this?
+              ;; (if (not (assoc 'allocate it)) it
+              ;;   (cons '(purge . "allocate") it))
+              (org-tj--format-attributes it))))
+    (s-join " " (list id name attrs))))
+
+(defun org-tj--build-declarations (type pd)
+  (let ((attr-table (alist-get type org-tj--attribute-alist))
+        (headlines (--> (format "org-tj--proc-data-%ss" type)
+                        (intern it)
+                        (funcall it pd))))
+    (--map (org-tj--build-declaration attr-table it pd) headlines)))
+
+(defun org-tj--get-id (headline ids)
   "Return id for task or resource ITEM and list of IDS."
-  (cdr (assq item ids)))
+  (cdr (assq headline ids)))
 
 (defun org-tj--get-name (headline)
   "Return name for task or resource HEADLINE.
@@ -399,6 +471,8 @@ doesn't have any end date defined."
      (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
      (--filter (equal kind (org-tj--get-report-kind it)))
      (--map (org-tj--build-declaration attr-table it pd)))))
+
+;;; dependencies
 
 (defun org-tj--resolve-dependencies (task tree pd)
   "Return a list of all tasks on which TASK depends."
@@ -657,29 +731,7 @@ doesn't include leading \"depends\"."
 Return new string.  If S is the empty string, return it."
   (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
 
-(defun org-tj--build-attributes (attr-alist headline pd)
-  "Return attributes string for HEADLINE.
-ATTRIBUTES is a list of symbols representing valid attributes
-for HEADLINE as keywords."
-  ;; TODO add validation here for attributes in headline that start
-  ;; with TJ3_ but are not valid
-  (cl-flet
-      ((eval-attr
-        (attr-data)
-        (let* ((name (car attr-data))
-               (action (cdr attr-data))
-               (value
-                (cond
-                 ((functionp action)
-                  (funcall action headline pd))
-                 ((keywordp action)
-                  (org-element-property action headline))
-                 (t (error "Unknown action: %s" action)))))
-          (cond
-           ((eq t value) (list name))
-           (value (cons name value))))))
-    (->> (--map (eval-attr it) attr-alist)
-         (-non-nil))))
+
 
 (defun org-tj--build-unique-id (item unique-ids)
   "Return a unique id for a given task or a resource.
@@ -1118,56 +1170,6 @@ ID is a string."
   "Return subheadings under HEADLINE if any."
   (let ((contents (org-element-contents headline)))
     (if (assoc 'section contents) (cdr contents) contents)))
-
-
-
-(defun org-tj--format-attributes (attribute-alist)
-  (cl-flet
-      ((format-attr
-        (cell)
-        (let ((key (symbol-name (car cell)))
-              (val (cdr cell)))
-          (cond
-           ((null val) key)
-           ((listp val) (-some->> val
-                                  (--map (format "%s %s" key it))
-                                  (s-join "\n")))
-           (val (format "%s %s" key val))
-           (t (error "Formatting error."))))))
-    ;; TODO this is redundant
-    (-some->> attribute-alist
-              (-map #'format-attr)
-              (s-join "\n")
-              (org-tj--indent-string)
-              (format "{\n%s\n}"))))
-
-(defun org-tj--build-declaration (attr-table headline pd)
-  "Return a task declaration.
-
-TASK is a headline.  INFO is a plist used as a communication
-channel.
-
-All valid attributes from TASK are inserted.  If TASK defines
-a property \"task_id\" it will be used as the id for this task.
-Otherwise it will use the ID property.  If neither is defined
-a unique id will be associated to it."
-  (let ((id (->> (org-tj--proc-data-ids pd)
-                 (org-tj--get-id headline)))
-        (name (format "\"%s\"" (org-tj--get-name headline)))
-        (attrs
-         (--> (org-tj--build-attributes attr-table headline pd)
-              ;; TODO how to generalize this?
-              ;; (if (not (assoc 'allocate it)) it
-              ;;   (cons '(purge . "allocate") it))
-              (org-tj--format-attributes it))))
-    (s-join " " (list id name attrs))))
-
-(defun org-tj--build-declarations (type pd)
-  (let ((attr-table (alist-get type org-tj--attribute-alist))
-        (headlines (--> (format "org-tj--proc-data-%ss" type)
-                        (intern it)
-                        (funcall it pd))))
-    (--map (org-tj--build-declaration attr-table it pd) headlines)))
 
 (defun org-tj--get-report-kind (headline)
   (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
