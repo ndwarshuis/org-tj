@@ -261,90 +261,6 @@ This hook is run with the name of the file as argument.")
 ;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
 ;;                  adlist))))
 
-;;; Unique IDs
-
-(defun org-tj--filter-headlines (headlines)
-  "Return HEADLINES that do not have `org-tj-ignore-tag'."
-  (--remove (->> (org-element-property :tags it)
-                 (member org-tj-ignore-tag))
-            headlines))
-
-(defun org-tj--clean-id (id)
-  "Clean and return ID to make it acceptable for TaskJuggler.
-ID is a string."
-  ;; Replace non-ascii by "_".
-  (replace-regexp-in-string
-   "[^a-zA-Z0-9_]" "_"
-   ;; Make sure id doesn't start with a number.
-   (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
-
-(defun org-tj--build-unique-id (item unique-ids)
-  "Return a unique id for a given task or a resource.
-ITEM is an `headline' type element representing the task or
-resource.  Its id is derived from its name and made unique
-against UNIQUE-IDS.  If the (downcased) first token of the
-headline is not unique try to add more (downcased) tokens of the
-headline or finally add more underscore characters (\"_\")."
-  (let ((id (org-string-nw-p (or (org-element-property :TJ3_ID item)
-                                 (org-element-property :CUSTOM_ID item)))))
-    ;; If an id is specified, use it, as long as it's unique.
-    (if (and id (not (member id unique-ids))) id
-      (let* ((parts (split-string (org-element-property :raw-value item)))
-	     (id (org-tj--clean-id (downcase (pop parts)))))
-	;; Try to add more parts of the headline to make it unique.
-	(while (and (car parts) (member id unique-ids))
-	  (setq id (concat id "_"
-			   (org-tj--clean-id (downcase (pop parts))))))
-	;; If it's still not unique, add "_".
-	(while (member id unique-ids)
-	  (setq id (concat id "_")))
-	id))))
-
-(defun org-tj--generate-ids (headlines)
-  "Generate list of unique ids from HEADLINES."
-  (->> headlines
-       (-reductions-from
-        (lambda (a b)
-          (let ((unique-id (org-tj--build-unique-id b a)))
-            ;; TODO this is inefficient (building list
-            ;; backwards)
-            (append a (list unique-id))))
-        nil)
-       (-drop 1)
-       (-map #'-last-item)))
-
-(defun org-tj--assign-global-ids (headlines)
-  "Assign a globally unique ID to each in HEADLINES.
-HEADLINES is a list of headlines which may contain subheadlines.
-Return value is an alist between headlines and their associated ID."
-  (cl-labels
-      ((filter-headlines
-        (hs)
-        (-when-let (filtered-hs (org-tj--filter-headlines hs))
-          (->> (--map (filter-headlines (org-tj--subheadlines it))
-                      filtered-hs)
-               (apply #'append)
-               (append filtered-hs)))))
-    (let ((filtered-headlines (filter-headlines headlines)))
-      (->> (org-tj--generate-ids filtered-headlines)
-           (--zip-with (cons it other) filtered-headlines)))))
-
-(defun org-tj--assign-local-ids (headlines)
-  "Assign a locally unique ID to each in HEADLINES.
-HEADLINES is a list of headlines which may contain subheadlines.
-Return value is an alist between headlines and their associated ID.
-IDs are hierarchical, which means are unique only among the task
-siblings."
-  (let* ((filtered-headlines (org-tj--filter-headlines headlines))
-         (inner-ids
-          (->> filtered-headlines
-               (--map (->> (org-tj--subheadlines it)
-                           (org-tj--assign-local-ids)))
-               (apply #'append))))
-    (->> (org-tj--generate-ids filtered-headlines)
-         (--zip-with (cons it other) filtered-headlines)
-         (append inner-ids))))
-
 ;;; headline attributes
 
 (defun org-tj--build-attributes (attr-alist headline pd)
@@ -1179,6 +1095,88 @@ Return new string.  If S is the empty string, return it."
   textreports
   taskreports
   resourcereports)
+
+(defun org-tj--filter-headlines (headlines)
+  "Return HEADLINES that do not have `org-tj-ignore-tag'."
+  (--remove (->> (org-element-property :tags it)
+                 (member org-tj-ignore-tag))
+            headlines))
+
+(defun org-tj--clean-id (id)
+  "Clean and return ID to make it acceptable for TaskJuggler.
+ID is a string."
+  ;; Replace non-ascii by "_".
+  (replace-regexp-in-string
+   "[^a-zA-Z0-9_]" "_"
+   ;; Make sure id doesn't start with a number.
+   (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
+
+(defun org-tj--build-unique-id (item unique-ids)
+  "Return a unique id for a given task or a resource.
+ITEM is an `headline' type element representing the task or
+resource.  Its id is derived from its name and made unique
+against UNIQUE-IDS.  If the (downcased) first token of the
+headline is not unique try to add more (downcased) tokens of the
+headline or finally add more underscore characters (\"_\")."
+  (let ((id (org-string-nw-p (or (org-element-property :TJ3_ID item)
+                                 (org-element-property :CUSTOM_ID item)))))
+    ;; If an id is specified, use it, as long as it's unique.
+    (if (and id (not (member id unique-ids))) id
+      (let* ((parts (split-string (org-element-property :raw-value item)))
+	     (id (org-tj--clean-id (downcase (pop parts)))))
+	;; Try to add more parts of the headline to make it unique.
+	(while (and (car parts) (member id unique-ids))
+	  (setq id (concat id "_"
+			   (org-tj--clean-id (downcase (pop parts))))))
+	;; If it's still not unique, add "_".
+	(while (member id unique-ids)
+	  (setq id (concat id "_")))
+	id))))
+
+(defun org-tj--generate-ids (headlines)
+  "Generate list of unique ids from HEADLINES."
+  (->> headlines
+       (-reductions-from
+        (lambda (a b)
+          (let ((unique-id (org-tj--build-unique-id b a)))
+            ;; TODO this is inefficient (building list
+            ;; backwards)
+            (append a (list unique-id))))
+        nil)
+       (-drop 1)
+       (-map #'-last-item)))
+
+(defun org-tj--assign-global-ids (headlines)
+  "Assign a globally unique ID to each in HEADLINES.
+HEADLINES is a list of headlines which may contain subheadlines.
+Return value is an alist between headlines and their associated ID."
+  (cl-labels
+      ((filter-headlines
+        (hs)
+        (-when-let (filtered-hs (org-tj--filter-headlines hs))
+          (->> (--map (filter-headlines (org-tj--subheadlines it))
+                      filtered-hs)
+               (apply #'append)
+               (append filtered-hs)))))
+    (let ((filtered-headlines (filter-headlines headlines)))
+      (->> (org-tj--generate-ids filtered-headlines)
+           (--zip-with (cons it other) filtered-headlines)))))
+
+(defun org-tj--assign-local-ids (headlines)
+  "Assign a locally unique ID to each in HEADLINES.
+HEADLINES is a list of headlines which may contain subheadlines.
+Return value is an alist between headlines and their associated ID.
+IDs are hierarchical, which means are unique only among the task
+siblings."
+  (let* ((filtered-headlines (org-tj--filter-headlines headlines))
+         (inner-ids
+          (->> filtered-headlines
+               (--map (->> (org-tj--subheadlines it)
+                           (org-tj--assign-local-ids)))
+               (apply #'append))))
+    (->> (org-tj--generate-ids filtered-headlines)
+         (--zip-with (cons it other) filtered-headlines)
+         (append inner-ids))))
 
 (defun org-tj--get-keywords (tree)
   "Return toplevel taskjuggler file keywords from buffer parse TREE."
