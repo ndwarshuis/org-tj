@@ -384,42 +384,32 @@ doesn't have any end date defined."
             (/ it (- org-lowest-priority org-highest-priority))
             (max 1 it)))
 
-(defun org-tj--get-inner (fun headline pd)
-  (-some->>
-   (org-tj--subheadlines headline)
-   (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-   (--map (funcall fun it pd))))
+;; (defun org-tj--get-inner (fun headline pd)
+;;   (-some->>
+;;    (org-tj--subheadlines headline)
+;;    (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+;;    (--map (funcall fun it pd))))
 
 (defun org-tj--get-inner-declaration (type headline pd)
-  (let ((attr-table (alist-get type org-tj--property-attributes)))
+  (let ((attr-table (alist-get type org-tj--attribute-alist)))
     (->>
      (org-tj--subheadlines headline)
      (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
      (--map (org-tj--build-declaration attr-table it pd)))))
 
-(defun org-tj--get-inner-tasks (headline pd)
-  (org-tj--get-inner #'org-tj--build-task headline pd))
-
-(defun org-tj--get-inner-report (kind headline pd)
-  (-some->>
-   (org-tj--subheadlines headline)
-   (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-   (--filter (equal kind (org-element-property :TJ3_REPORT_KIND it)))
-   (--map (org-tj--build-report it pd))))
-
-(defun org-tj--get-resourcereports (headline pd)
-  (org-tj--get-inner-report "resource" headline pd))
-
-(defun org-tj--get-taskreports (headline pd)
-  (org-tj--get-inner-report "task" headline pd))
-   
-(defun org-tj--get-textreports (headline pd)
-  (org-tj--get-inner-report "text" headline pd))
+(defun org-tj--get-inner-reports (type headline pd)
+  (let ((attr-table (alist-get type org-tj--attribute-alist))
+        (kind (->> type (symbol-name) (s-chop-suffix "report"))))
+    (->>
+     (org-tj--subheadlines headline)
+     (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+     (--filter (equal kind (org-tj--get-report-kind it)))
+     (--map (org-tj--build-declaration attr-table it pd)))))
 
 (defun org-tj--get-depends (headline pd)
   (let ((tree (org-tj--proc-data-tree pd))
         (ids (org-tj--proc-data-ids pd)))
-    (-when-let (depends (org-tj--resolve-dependencies headline tree))
+    (-when-let (depends (org-tj--resolve-dependencies headline tree pd))
       (org-tj--format-dependencies depends headline ids))))
 
 (defun org-tj--get-rich-text (attribute headline _pd)
@@ -607,7 +597,9 @@ ID is a string."
       (t (error "Invalid navbar specification: %s" nav)))))
 
 (defun org-tj--get-vacation (pd)
-  (org-tj--get-kw-list pd "VACATION" 9))
+  (->> (org-tj--proc-data-keywords pd)
+       (--filter (equal (car it) "VACATION"))
+       (-map #'cdr)))
 
 (defun org-tj--get-flags (pd)
   (org-tj--get-kw-list pd "FLAG" 6))
@@ -618,25 +610,136 @@ ID is a string."
 (defun org-tj--get-limit (pd)
   (-some->> (org-tj--get-kw-list pd "LIMIT" " ") (format "{ %s }")))
 
-(defconst org-tj--kw--elements
-  '((project org-tj--get-project-id
-             org-tj--get-project-name
-             org-tj--get-project-version
-             org-tj--get-project-start
-             org-tj--get-project-end
-             org-tj--get-project-attributes)
-    (copyright org-tj--get-copyright)
-    (vacation org-tj--get-vacation)
-    (flags org-tj--get-flags)
-    (balance org-tj--get-balance)
-    (leaves org-tj--get-leaves)
-    (rate org-tj--get-rate)
-    (navigator org-tj--get-navigator)
-    (limits org-tj--get-limit)))
+(defun org-tj--get-project (pd)
+  (->>
+   (list 
+    (org-tj--get-project-id pd)
+    (org-tj--get-project-name pd)
+    (org-tj--get-project-version pd)
+    (org-tj--get-project-start pd)
+    (org-tj--get-project-end pd)
+    (org-tj--get-project-attributes pd))
+   (s-join " ")))
 
-(defconst org-tj--property-attributes "")
+(defconst org-tj--attribute-alist
+  `((account
+     ((account . ,(-partial #'org-tj--get-inner-declaration 'account))
+      (aggregate . :TJ3_AGGREGATE)
+      (credits . :TJ3_CREDITS)
+      (flags . :TJ3_FLAGS)))
+    (shift
+     ((leaves . :TJ3_LEAVES)
+      (replace . :TJ3_REPLACE)
+      (shift . ,(-partial #'org-tj--get-inner-declaration 'shift))
+      (timezone . :TJ3_TIMEZONE)
+      (vacation . :TJ3_VACATION)
+      (workinghours . :TJ3_WORKINGHOURS)))
+    (resource
+     ;; leaveallowance and supplement not implemented
+     ((booking . :TJ3_BOOKING)
+      (chargeset . :TJ3_CHARGESET)
+      (efficiency . :TJ3_EFFICIENCY)
+      (email . :TJ3_EMAIL)
+      (fail . :TJ3_FAIL)
+      (flag . :TJ3_FLAGS)
+      (journalentry . :TJ3_JOURNALENTRY)
+      (leaves . :TJ3_LEAVES)
+      (limits . :TJ3_LIMITS)
+      (managers . :TJ3_MANAGERS)
+      (purge . :TJ3_PURGE)
+      (rate . :TJ3_RATE)
+      (resource . ,(-partial #'org-tj--get-inner-declaration 'resource))
+      (shifts . :TJ3_SHIFTS)
+      (vacation . :TJ3_VACATION)
+      (warn . :TJ3_WARN)
+      (workinghours . :TJ3_WORKINGHOURS)))
+    (task
+     ;; adopt, effortdone, effortleft, and supplement not
+     ;; implemented
+     ((allocate . :TJ3_ALLOCATE)
+      (booking . :TJ3_BOOKING)
+      (charge . :TJ3_CHARGE)
+      (chargeset . :TJ3_CHARGESET)
+      (complete . org-tj--get-complete)
+      (depends . org-tj--get-depends)
+      (duration . :TJ3_DURATION)
+      (effort . org-tj--get-effort)
+      (end . org-tj--get-end)
+      (fail . :TJ3_FAIL)
+      (flags . :TJ3_FLAGS)
+      (journalentry . :TJ3_JOURNALENTRY)
+      (length . :TJ3_LENGTH)
+      (limits . :TJ3_LIMITS)
+      (maxend . :TJ3_MAXEND)
+      (maxstart . :TJ3_MAXSTART)
+      (milestone . org-tj--get-milestone)
+      (minend . :TJ3_MINEND)
+      (minstart . :TJ3_MINSTART)
+      (note . :TJ3_NOTE)
+      (period . :TJ3_PERIOD)
+      (precedes . :TJ3_PRECEDES)
+      (priority . org-tj--get-priority)
+      (projectid . :TJ3_PROJECTID)
+      (purge . :TJ3_PURGE)
+      (responsible . :TJ3_RESPONSIBLE)
+      (scheduled . :TJ3_SCHEDULED)
+      (scheduling . :TJ3_SCHEDULING)
+      (schedulingmode . :TJ3_SCHEDULINGMODE)
+      (shift . :TJ3_SHIFTS)
+      (start . org-tj--get-start)
+      (task . ,(-partial #'org-tj--get-inner-declaration 'task))
+      (warn . :TJ3_WARN)))
+    (report
+     ;; accountreport, auxdir, export, opennodes, and tracereport
+     ;; not implemented
+     ((accountroot . :TJ3_ACCOUNTROOT)
+      (balance . :TJ3_BALANCE)
+      (caption . ,(-partial #'org-tj--get-rich-text "caption"))
+      (center . ,(-partial #'org-tj--get-rich-text "center"))
+      (columns . :TJ3_COLUMNS)
+      (currencyformat . :TJ3_CURRENCYFORMAT)
+      (end . ,(-partial #'org-tj--get-rich-text "end"))
+      (epilog . ,(-partial #'org-tj--get-rich-text "epilog"))
+      (flags . :TJ3_FLAGS)
+      (footer . ,(-partial #'org-tj--get-rich-text "footer"))
+      (formats . :TJ3_FORMATS)
+      (header . ,(-partial #'org-tj--get-rich-text "header"))
+      (headline . ,(-partial #'org-tj--get-rich-text "headline"))
+      (height . :TJ3_HEIGHT)
+      (hideaccount . :TJ3_HIDEACCOUNT)
+      (hidejournalentry . :TJ3_HIDEJOURNALENTRY)
+      (hideresource . :TJ3_HIDERESOURCE)
+      (hidetask . :TJ3_HIDETASK)
+      (journalattributes . :TJ3_JOURNALATTRIBUTES)
+      (journalmode . :TJ3_JOURNALMODE)
+      (left . ,(-partial #'org-tj--get-rich-text "left"))
+      (loadunit . :TJ3_LOADUNIT)
+      (numberformat . :TJ3_NUMBERFORMAT)
+      (period . :TJ3_PERIOD)
+      (prolog . ,(-partial #'org-tj--get-rich-text "prolog"))
+      (purge . :TJ3_PURGE)
+      (rawhtmlhead . :TJ3_RAWHTMLHEAD)
+      (resourcereport . ,(-partial #'org-tj--get-inner-reports 'resourcereport))
+      (right . ,(-partial #'org-tj--get-rich-text "right"))
+      (rollupaccount . :TJ3_ROLLUPACCOUNT)
+      (rollupresource . :TJ3_ROLLUPRESOURCE)
+      (rolluptask . :TJ3_ROLLUPTASK)
+      (scenarios . :TJ3_SCENARIOS)
+      (selfcontained . :TJ3_SELFCONTAINED)
+      (sortaccounts . :TJ3_SORTACCOUNTS)
+      (sortjournalentries . :TJ3_SORTJOURNALENTRIES)
+      (sortresources . :TJ3_SORTRESOURCES)
+      (sorttasks . :TJ3_SORTTASKS)
+      (start . org-tj--get-start)
+      (taskreport . ,(-partial #'org-tj--get-inner-reports 'taskreport))
+      (taskroot . :TJ3_TASKROOT)
+      (textreport . ,(-partial #'org-tj--get-inner-reports 'textreport))
+      (timeformat . :TJ3_TIMEFORMAT)
+      (timezone . :TJ3_TIMEZONE)
+      (title . :TJ3_TITLE)
+      (width . :TJ3_WIDTH)))))
 
-(setq org-tj--property-attributes
+(defconst org-tj--attribute-alist
       (let
           ((account
             `((account . ,(-partial #'org-tj--get-inner-declaration 'account))
@@ -735,7 +838,7 @@ ID is a string."
               (prolog . ,(-partial #'org-tj--get-rich-text "prolog"))
               (purge . :TJ3_PURGE)
               (rawhtmlhead . :TJ3_RAWHTMLHEAD)
-              (resourcereport . ,(-partial #'org-tj--get-inner-declaration 'resourcereport))
+              (resourcereport . ,(-partial #'org-tj--get-inner-reports 'resourcereport))
               (right . ,(-partial #'org-tj--get-rich-text "right"))
               (rollupaccount . :TJ3_ROLLUPACCOUNT)
               (rollupresource . :TJ3_ROLLUPRESOURCE)
@@ -747,9 +850,9 @@ ID is a string."
               (sortresources . :TJ3_SORTRESOURCES)
               (sorttasks . :TJ3_SORTTASKS)
               (start . org-tj--get-start)
-              (taskreport . ,(-partial #'org-tj--get-inner-declaration 'taskreport))
+              (taskreport . ,(-partial #'org-tj--get-inner-reports 'taskreport))
               (taskroot . :TJ3_TASKROOT)
-              (textreport . ,(-partial #'org-tj--get-inner-declaration 'textreport))
+              (textreport . ,(-partial #'org-tj--get-inner-reports 'textreport))
               (timeformat . :TJ3_TIMEFORMAT)
               (timezone . :TJ3_TIMEZONE)
               (title . :TJ3_TITLE)
@@ -761,6 +864,24 @@ ID is a string."
           (textreport . ,report)
           (taskreport . ,report)
           (resourcereport . ,report))))
+
+(defconst org-tj--toplevel-alist
+  `((project . org-tj--get-project)
+    (copyright . org-tj--get-copyright)
+    (vacation . org-tj--get-vacation)
+    (flags . org-tj--get-flags)
+    (account . ,(-partial #'org-tj--build-declarations 'account))
+    (balance . org-tj--get-balance)
+    (leaves . org-tj--get-leaves)
+    (rate . org-tj--get-rate)
+    (limits . org-tj--get-limit)
+    (shift . ,(-partial #'org-tj--build-declarations 'shift))
+    (resource . ,(-partial #'org-tj--build-declarations 'resource))
+    (task . ,(-partial #'org-tj--build-declarations 'task))
+    (navigator . org-tj--get-navigator)
+    (textreport . ,(-partial #'org-tj--build-declarations 'textreport))
+    (taskreport . ,(-partial #'org-tj--build-declarations 'taskreport))
+    (resourcereport . ,(-partial #'org-tj--build-declarations 'resourcereport))))
 
 (defun org-tj--format-headlines (pd)
   (cl-flet
@@ -776,26 +897,29 @@ ID is a string."
                     (--map (format "%s %s" key it))
                     (s-join "\n")))))
     (->> org-tj--property-attributes
-         (-map #'process))))
+         (-map #'process)
+         (-non-nil))))
 
 (defun org-tj--format-kws (pd)
   (cl-flet
       ((process
         (cell)
         (let ((name (car cell))
-              (funs (cdr cell)))
-          (->> funs
-               (--map (funcall it pd))
-               (s-join " ")
-               (format "%s %s" name)))))
-    (->> org-tj--kw--elements
-         (-map #'process))))
+              (fun (cdr cell)))
+          (-when-let (value (funcall fun pd))
+            (if (stringp value) (format "%s %s" name value)
+              (->> value
+                   (--map (format "%s %s" name it))
+                   (s-join "\n")))))))
+    (->> org-tj--toplevel-alist
+         (-map #'process)
+         (-non-nil))))
 
 ;;; Dependencies
 
 ;; TODO combine this with the formatter, no reason to keep them
 ;; separate
-(defun org-tj--resolve-dependencies (task tree)
+(defun org-tj--resolve-dependencies (task tree pd)
   "Return a list of all tasks on which TASK depends."
   ;; TODO add blocker eventually, baby steps
   (let* ((deps-ids (-some->>
@@ -816,7 +940,7 @@ ID is a string."
             (list (org-export-get-previous-element task nil))))
          (depends
           (if (not deps-ids) prev-task
-            (--> (org-tj--get-tasks tree)
+            (--> (org-tj--proc-data-tasks pd)
                  (org-element-map it 'headline
                    (lambda (task)
                      (-when-let (task-id
@@ -1039,7 +1163,7 @@ doesn't include leading \"depends\"."
         (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
       (format "'%s'" rich-text))))
 
-(defun org-tj--get-tasks (tree)
+(defun org-tj--get-task-headlines (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
@@ -1051,7 +1175,7 @@ parse tree of the buffer."
                  (member org-tj-project-tag))
         hl))))
 
-(defun org-tj--get-accounts (tree)
+(defun org-tj--get-account-headlines (tree)
   "Return list of headlines marked with `org-tj-account-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
@@ -1063,7 +1187,7 @@ parse tree of the buffer."
                  (member org-tj-account-tag))
         hl))))
 
-(defun org-tj--get-shifts (tree)
+(defun org-tj--get-shift-headlines (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
@@ -1087,7 +1211,7 @@ parse tree of the buffer."
        (org-element-map it 'headline #'identity)
        (--filter (org-element-property :TJ3_ID it) it)))
 
-(defun org-tj--get-reports (tree)
+(defun org-tj--get-report-headlines (tree)
   "Return reports tree from TREE."
   (org-element-map tree 'headline
     (lambda (hl)
@@ -1135,6 +1259,13 @@ a unique id will be associated to it."
               (org-tj--format-attributes it))))
     (s-join " " (list id name attrs))))
 
+(defun org-tj--build-declarations (type pd)
+  (let ((attr-table (alist-get type org-tj--attribute-alist))
+        (headlines (--> (format "org-tj--proc-data-%ss" type)
+                        (intern it)
+                        (funcall it pd))))
+    (--map (org-tj--build-declaration attr-table it pd) headlines)))
+
 (defun org-tj--get-report-kind (headline)
   (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
     (if (member kind '("text" "task" "resource")) kind
@@ -1169,14 +1300,14 @@ a unique id will be associated to it."
 
 (defun org-tj--make-proc-data (info)
   (let* ((tree (plist-get info :parse-tree))
-         (tasks (org-tj--get-tasks tree))
-         (accounts (org-tj--get-accounts tree))
-         (shifts (org-tj--get-shifts tree))
+         (tasks (org-tj--get-task-headlines tree))
+         (accounts (org-tj--get-account-headlines tree))
+         (shifts (org-tj--get-shift-headlines tree))
          (resources (org-tj--get-resource-headlines tree))
-         (reports (org-tj--get-reports tree))
-         (textreports (org-tj--get-reports-kind reports "textreport"))
-         (taskreports (org-tj--get-reports-kind reports "taskreport"))
-         (resourcereports (org-tj--get-reports-kind reports "resourcereports")))
+         (reports (org-tj--get-report-headlines tree))
+         (textreports (org-tj--get-reports-kind reports "text"))
+         (taskreports (org-tj--get-reports-kind reports "task"))
+         (resourcereports (org-tj--get-reports-kind reports "resource")))
     (make-org-tj--proc-data
      :info info
      :tree tree
@@ -1201,7 +1332,7 @@ taskjuggler syntax."
   (let ((pd (org-tj--make-proc-data info)))
     (concat
      (--> (org-tj--format-kws pd)
-          (append it (org-tj--format-headlines pd))
+          ;; (append it (org-tj--format-headlines pd))
           (s-join "\n\n" it)))))
 
 ;;; export functions
