@@ -563,18 +563,7 @@ ID is a string."
   (-when-let (kws (org-tj--proc-data-keywords pd))
       (alist-get key kws default nil #'equal)))
 
-(defun org-tj--file-tj3-keywords (tree)
-  "Return toplevel taskjuggler file keywords from buffer parse TREE."
-  (->> tree
-       org-element-contents
-       (assoc 'section)
-       org-element-contents
-       (--filter (and (eq 'keyword (org-element-type it))
-                      (-> (org-element-property :key it)
-                          (substring 0 4)
-                          (equal "TJ3_"))))
-       (--map (cons (substring (org-element-property :key it) 4)
-                    (org-element-property :value it)))))
+;;; project declaration
 
 (defun org-tj--get-project-id (pd)
   (let* ((info (org-tj--proc-data-info pd))
@@ -1204,6 +1193,19 @@ a unique id will be associated to it."
   taskreports
   resourcereports)
 
+(defun org-tj--get-keywords (tree)
+  "Return toplevel taskjuggler file keywords from buffer parse TREE."
+  (->> tree
+       org-element-contents
+       (assoc 'section)
+       org-element-contents
+       (--filter (and (eq 'keyword (org-element-type it))
+                      (-> (org-element-property :key it)
+                          (substring 0 4)
+                          (equal "TJ3_"))))
+       (--map (cons (substring (org-element-property :key it) 4)
+                    (org-element-property :value it)))))
+
 (defun org-tj--get-reports-kind (reports kind)
   (--filter (equal kind (org-tj--get-report-kind it)) reports))
 
@@ -1258,7 +1260,7 @@ parse tree of the buffer."
     (make-org-tj--proc-data
      :info info
      :tree tree
-     :keywords (org-tj--file-tj3-keywords tree)
+     :keywords (org-tj--get-keywords tree)
      :ids (append (org-tj--assign-global-ids accounts)
                   (org-tj--assign-global-ids shifts)
                   (org-tj--assign-global-ids resources)
