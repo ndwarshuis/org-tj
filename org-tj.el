@@ -1132,37 +1132,6 @@ ID is a string."
         (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
       (format "'%s'" rich-text))))
 
-(defun org-tj--get-tagged-headlines (tree tag)
-  ;; TODO what if we have tags in the subtree, we don't need those
-  (org-element-map tree 'headline
-    (lambda (hl) (when (member tag (org-element-property :tags hl)) hl))))
-
-(defun org-tj--get-task-headlines (tree)
-  "Return list of headlines marked with `org-tj-project-tag'.
-Only return the toplevel heading in a marked subtree. TREE is the
-parse tree of the buffer."
-  (org-tj--get-tagged-headlines tree org-tj-project-tag))
-
-(defun org-tj--get-account-headlines (tree)
-  "Return list of headlines marked with `org-tj-account-tag'.
-Only return the toplevel heading in a marked subtree. TREE is the
-parse tree of the buffer."
-  (org-tj--get-tagged-headlines tree org-tj-account-tag))
-
-(defun org-tj--get-shift-headlines (tree)
-  "Return list of headlines marked with `org-tj-project-tag'.
-Only return the toplevel heading in a marked subtree. TREE is the
-parse tree of the buffer."
-  (org-tj--get-tagged-headlines tree org-tj-shift-tag))
-
-(defun org-tj--get-resource-headlines (tree)
-  "Return list of all org taskjuggler resource headlines."
-  (org-tj--get-tagged-headlines tree org-tj-resource-tag))
-
-(defun org-tj--get-report-headlines (tree)
-  "Return reports tree from TREE."
-  (org-tj--get-tagged-headlines tree org-tj-report-tag))
-
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
       ((format-attr
@@ -1218,6 +1187,8 @@ a unique id will be associated to it."
     (->> (org-element-property :raw-value)
          (error "kind not specified for headline \"%s\""))))
 
+;;; process data structure
+
 (cl-defstruct (org-tj--proc-data
                (:copier nil))
   "A collection of processed data from the export tree."
@@ -1233,15 +1204,46 @@ a unique id will be associated to it."
   taskreports
   resourcereports)
 
+(defun org-tj--get-reports-kind (reports kind)
+  (--filter (equal kind (org-tj--get-report-kind it)) reports))
+
+(defun org-tj--get-tagged-headlines (tree tag)
+  ;; TODO what if we have tags in the subtree, we don't need those
+  (org-element-map tree 'headline
+    (lambda (hl) (when (member tag (org-element-property :tags hl)) hl))))
+
+(defun org-tj--get-task-headlines (tree)
+  "Return list of headlines marked with `org-tj-project-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  (org-tj--get-tagged-headlines tree org-tj-project-tag))
+
+(defun org-tj--get-account-headlines (tree)
+  "Return list of headlines marked with `org-tj-account-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  (org-tj--get-tagged-headlines tree org-tj-account-tag))
+
+(defun org-tj--get-shift-headlines (tree)
+  "Return list of headlines marked with `org-tj-project-tag'.
+Only return the toplevel heading in a marked subtree. TREE is the
+parse tree of the buffer."
+  (org-tj--get-tagged-headlines tree org-tj-shift-tag))
+
+(defun org-tj--get-resource-headlines (tree)
+  "Return list of all org taskjuggler resource headlines."
+  (org-tj--get-tagged-headlines tree org-tj-resource-tag))
+
+(defun org-tj--get-report-headlines (tree)
+  "Return reports tree from TREE."
+  (org-tj--get-tagged-headlines tree org-tj-report-tag))
+
 (defun org-tj--add-allocates (tasks)
   (cl-flet ((add-allocates
              (task)
              (org-element-put-property
               task :TJ3_ALLOCATE (user-login-name))))
     (-map #'add-allocates tasks)))
-
-(defun org-tj--get-reports-kind (reports kind)
-  (--filter (equal kind (org-tj--get-report-kind it)) reports))
 
 (defun org-tj--make-proc-data (info)
   (let* ((tree (plist-get info :parse-tree))
@@ -1274,10 +1276,9 @@ a unique id will be associated to it."
   "Build full contents of a taskjuggler project file.
 INFO is a plist holding export options. Return formatted string in 
 taskjuggler syntax."
-  (let ((pd (org-tj--make-proc-data info)))
-    (concat
-     (--> (org-tj--format-kws pd)
-          (s-join "\n\n" it)))))
+  (->> (org-tj--make-proc-data info)
+       (org-tj--format-kws)
+       (s-join "\n\n")))
 
 ;;; export functions
 
