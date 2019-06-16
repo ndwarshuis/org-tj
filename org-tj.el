@@ -489,11 +489,6 @@ doesn't include leading \"depends\"."
 Return new string.  If S is the empty string, return it."
   (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
 
-(defun org-tj--keyword-to-attribute (keyword)
-  "Return attribute KEYWORD as a formatted string.
-KEYWORD is assumed to be like :TJ3_attribute."
-  (->> keyword symbol-name (s-chop-prefix ":TJ3_") downcase))
-
 (defun org-tj--build-attributes (attr-alist headline pd)
   "Return attributes string for HEADLINE.
 ATTRIBUTES is a list of symbols representing valid attributes
@@ -549,6 +544,8 @@ ID is a string."
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
+;;; project declaration
+
 (defun org-tj--get-kw-list (pd key &optional sep)
   (let ((sep (cond
               ((numberp sep) (concat ",\n" (s-repeat sep " ")))
@@ -563,7 +560,6 @@ ID is a string."
   (-when-let (kws (org-tj--proc-data-keywords pd))
       (alist-get key kws default nil #'equal)))
 
-;;; project declaration
 
 (defun org-tj--get-project-id (pd)
   (let* ((info (org-tj--proc-data-info pd))
