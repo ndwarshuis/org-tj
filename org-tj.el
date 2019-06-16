@@ -269,6 +269,37 @@ This hook is run with the name of the file as argument.")
                  (member org-tj-ignore-tag))
             headlines))
 
+(defun org-tj--clean-id (id)
+  "Clean and return ID to make it acceptable for TaskJuggler.
+ID is a string."
+  ;; Replace non-ascii by "_".
+  (replace-regexp-in-string
+   "[^a-zA-Z0-9_]" "_"
+   ;; Make sure id doesn't start with a number.
+   (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
+
+(defun org-tj--build-unique-id (item unique-ids)
+  "Return a unique id for a given task or a resource.
+ITEM is an `headline' type element representing the task or
+resource.  Its id is derived from its name and made unique
+against UNIQUE-IDS.  If the (downcased) first token of the
+headline is not unique try to add more (downcased) tokens of the
+headline or finally add more underscore characters (\"_\")."
+  (let ((id (org-string-nw-p (or (org-element-property :TJ3_ID item)
+                                 (org-element-property :CUSTOM_ID item)))))
+    ;; If an id is specified, use it, as long as it's unique.
+    (if (and id (not (member id unique-ids))) id
+      (let* ((parts (split-string (org-element-property :raw-value item)))
+	     (id (org-tj--clean-id (downcase (pop parts)))))
+	;; Try to add more parts of the headline to make it unique.
+	(while (and (car parts) (member id unique-ids))
+	  (setq id (concat id "_"
+			   (org-tj--clean-id (downcase (pop parts))))))
+	;; If it's still not unique, add "_".
+	(while (member id unique-ids)
+	  (setq id (concat id "_")))
+	id))))
+
 (defun org-tj--generate-ids (headlines)
   "Generate list of unique ids from HEADLINES."
   (->> headlines
@@ -313,37 +344,6 @@ siblings."
     (->> (org-tj--generate-ids filtered-headlines)
          (--zip-with (cons it other) filtered-headlines)
          (append inner-ids))))
-
-(defun org-tj--build-unique-id (item unique-ids)
-  "Return a unique id for a given task or a resource.
-ITEM is an `headline' type element representing the task or
-resource.  Its id is derived from its name and made unique
-against UNIQUE-IDS.  If the (downcased) first token of the
-headline is not unique try to add more (downcased) tokens of the
-headline or finally add more underscore characters (\"_\")."
-  (let ((id (org-string-nw-p (or (org-element-property :TJ3_ID item)
-                                 (org-element-property :CUSTOM_ID item)))))
-    ;; If an id is specified, use it, as long as it's unique.
-    (if (and id (not (member id unique-ids))) id
-      (let* ((parts (split-string (org-element-property :raw-value item)))
-	     (id (org-tj--clean-id (downcase (pop parts)))))
-	;; Try to add more parts of the headline to make it unique.
-	(while (and (car parts) (member id unique-ids))
-	  (setq id (concat id "_"
-			   (org-tj--clean-id (downcase (pop parts))))))
-	;; If it's still not unique, add "_".
-	(while (member id unique-ids)
-	  (setq id (concat id "_")))
-	id))))
-
-(defun org-tj--clean-id (id)
-  "Clean and return ID to make it acceptable for TaskJuggler.
-ID is a string."
-  ;; Replace non-ascii by "_".
-  (replace-regexp-in-string
-   "[^a-zA-Z0-9_]" "_"
-   ;; Make sure id doesn't start with a number.
-   (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
 ;;; headline attributes
 
