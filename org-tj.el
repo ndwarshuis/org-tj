@@ -384,12 +384,6 @@ doesn't have any end date defined."
             (/ it (- org-lowest-priority org-highest-priority))
             (max 1 it)))
 
-;; (defun org-tj--get-inner (fun headline pd)
-;;   (-some->>
-;;    (org-tj--subheadlines headline)
-;;    (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-;;    (--map (funcall fun it pd))))
-
 (defun org-tj--get-inner-declaration (type headline pd)
   (let ((attr-table (alist-get type org-tj--attribute-alist)))
     (->>
@@ -965,14 +959,6 @@ ID is a string."
          (-map #'process)
          (-non-nil))))
 
-;;; Dependencies
-
-;; TODO combine this with the formatter, no reason to keep them
-;; separate
-
-
-
-
 ;;; Translator Functions
 
 (defun org-tj--subheadlines (headline)
@@ -1146,60 +1132,36 @@ ID is a string."
         (format "-8<-\n%s\n->8-" (org-tj--indent-string rich-text))
       (format "'%s'" rich-text))))
 
+(defun org-tj--get-tagged-headlines (tree tag)
+  ;; TODO what if we have tags in the subtree, we don't need those
+  (org-element-map tree 'headline
+    (lambda (hl) (when (member tag (org-element-property :tags hl)) hl))))
+
 (defun org-tj--get-task-headlines (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
-  ;; TODO what if we have project tags in the subtree, we don't need
-  ;; those
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (->> (org-element-property :tags hl)
-                 (member org-tj-project-tag))
-        hl))))
+  (org-tj--get-tagged-headlines tree org-tj-project-tag))
 
 (defun org-tj--get-account-headlines (tree)
   "Return list of headlines marked with `org-tj-account-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
-  ;; TODO what if we have shift tags in the subtree, we don't need
-  ;; those
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (->> (org-element-property :tags hl)
-                 (member org-tj-account-tag))
-        hl))))
+  (org-tj--get-tagged-headlines tree org-tj-account-tag))
 
 (defun org-tj--get-shift-headlines (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
 Only return the toplevel heading in a marked subtree. TREE is the
 parse tree of the buffer."
-  ;; TODO what if we have shift tags in the subtree, we don't need
-  ;; those
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (->> (org-element-property :tags hl)
-                 (member org-tj-shift-tag))
-        hl))))
+  (org-tj--get-tagged-headlines tree org-tj-shift-tag))
 
 (defun org-tj--get-resource-headlines (tree)
   "Return list of all org taskjuggler resource headlines."
-  (--> (or tree (org-element-parse-buffer))
-       (org-element-map it 'headline
-         (lambda (hl)
-           (when (member org-tj-resource-tag
-                         (org-element-property :tags hl))
-             hl))
-         nil t)
-       (org-element-map it 'headline #'identity)
-       (--filter (org-element-property :TJ3_ID it) it)))
+  (org-tj--get-tagged-headlines tree org-tj-resource-tag))
 
 (defun org-tj--get-report-headlines (tree)
   "Return reports tree from TREE."
-  (org-element-map tree 'headline
-    (lambda (hl)
-      (when (member org-tj-report-tag (org-element-property :tags hl))
-        hl))))
+  (org-tj--get-tagged-headlines tree org-tj-report-tag))
 
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
