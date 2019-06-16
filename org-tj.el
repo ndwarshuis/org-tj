@@ -883,23 +883,6 @@ ID is a string."
     (taskreport . ,(-partial #'org-tj--build-declarations 'taskreport))
     (resourcereport . ,(-partial #'org-tj--build-declarations 'resourcereport))))
 
-(defun org-tj--format-headlines (pd)
-  (cl-flet
-      ((process
-        (cell)
-        (let* ((key (car cell))
-               (attr-table (cdr cell))
-               (hls (--> (format "org-tj--proc-data-%ss" key)
-                         (intern it)
-                         (funcall it pd))))
-          (-some->> hls
-                    (--map (org-tj--build-declaration attr-table it pd))
-                    (--map (format "%s %s" key it))
-                    (s-join "\n")))))
-    (->> org-tj--property-attributes
-         (-map #'process)
-         (-non-nil))))
-
 (defun org-tj--format-kws (pd)
   (cl-flet
       ((process
@@ -1332,7 +1315,6 @@ taskjuggler syntax."
   (let ((pd (org-tj--make-proc-data info)))
     (concat
      (--> (org-tj--format-kws pd)
-          ;; (append it (org-tj--format-headlines pd))
           (s-join "\n\n" it)))))
 
 ;;; export functions
