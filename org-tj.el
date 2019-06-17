@@ -406,7 +406,7 @@ doesn't have any end date defined."
 
 ;;; dependencies
 
-(defun org-tj--resolve-dependencies (task tree pd)
+(defun org-tj--resolve-dependencies (task pd)
   "Return a list of all tasks on which TASK depends."
   ;; TODO add blocker eventually, baby steps
   (let* ((deps-ids (-some->>
@@ -474,9 +474,8 @@ doesn't include leading \"depends\"."
                 (s-join ", ")))))
 
 (defun org-tj--get-depends (headline pd)
-  (let ((tree (org-tj--proc-data-tree pd))
-        (ids (org-tj--proc-data-ids pd)))
-    (-when-let (depends (org-tj--resolve-dependencies headline tree pd))
+  (let ((ids (org-tj--proc-data-ids pd)))
+    (-when-let (depends (org-tj--resolve-dependencies headline pd))
       (org-tj--format-dependencies depends headline ids))))
 
 (defconst org-tj--attribute-alist
