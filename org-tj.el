@@ -247,6 +247,9 @@ This hook is run with the name of the file as argument.")
 Return new string.  If S is the empty string, return it."
   (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
 
+(defun org-tj--quote-string (s)
+  (if s (format "\"%s\"" s) "\"\""))
+
 (defun org-tj--subheadlines (headline)
   "Return subheadings under HEADLINE if any."
   (let ((contents (org-element-contents headline)))
@@ -254,7 +257,8 @@ Return new string.  If S is the empty string, return it."
 
 (defun org-tj--get-report-kind (headline)
   (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
-    (if (member kind '("text" "task" "resource")) kind
+      (if (member kind '("textreport" "taskreport" "resourcereport"))
+          kind
       (error "unknown kind: %s" kind))
     (->> (org-element-property :raw-value)
          (error "kind not specified for headline \"%s\""))))
@@ -269,21 +273,19 @@ for HEADLINE as keywords."
   ;; with TJ3_ but are not valid
   (cl-flet
       ((eval-attr
-        (attr-data)
-        (let* ((name (car attr-data))
-               (action (cdr attr-data))
-               (value
-                (cond
-                 ((functionp action)
-                  (funcall action headline pd))
-                 ((keywordp action)
-                  (org-element-property action headline))
-                 (t (error "Unknown action: %s" action)))))
-          (cond
-           ((eq t value) (list name))
-           (value (cons name value))))))
-    (->> (--map (eval-attr it) attr-alist)
-         (-non-nil))))
+        (cell)
+        (let ((name (car cell))
+              (action (cdr cell)))
+          (-when-let
+              (value
+               (cond
+                ((functionp action)
+                 (funcall action headline pd))
+                ((keywordp action)
+                 (org-element-property action headline))
+                (t (error "Unknown action: %s" action))))
+            (if (eq t value) (list name) (cons name value))))))
+    (-non-nil (-map #'eval-attr attr-alist))))
 
 (defun org-tj--format-attributes (attribute-alist)
   (cl-flet
@@ -298,12 +300,23 @@ for HEADLINE as keywords."
                                   (s-join "\n")))
            (val (format "%s %s" key val))
            (t (error "Formatting error."))))))
-    ;; TODO this is redundant
     (-some->> attribute-alist
               (-map #'format-attr)
               (s-join "\n")
               (org-tj--indent-string)
               (format "{\n%s\n}"))))
+
+(defun org-tj--get-id (headline ids)
+  "Return id for task or resource ITEM and list of IDS."
+  (cdr (assq headline ids)))
+
+(defun org-tj--get-name (headline)
+  "Return name for task or resource HEADLINE.
+ITEM is a headline.  Return value is a string."
+  (--> (org-element-property :raw-value headline)
+       ;; Quote double quotes in name.
+       (replace-regexp-in-string "\"" "\\\"" it t t)
+       (org-tj--quote-string it)))
 
 (defun org-tj--build-declaration (attr-table headline pd)
   "Return a task declaration.
@@ -317,13 +330,13 @@ Otherwise it will use the ID property.  If neither is defined
 a unique id will be associated to it."
   (let ((id (->> (org-tj--proc-data-ids pd)
                  (org-tj--get-id headline)))
-        (name (format "\"%s\"" (org-tj--get-name headline)))
+        (name (org-tj--get-name headline))
         (attrs
-         (--> (org-tj--build-attributes attr-table headline pd)
+         (->> (org-tj--build-attributes attr-table headline pd)
               ;; TODO how to generalize this?
               ;; (if (not (assoc 'allocate it)) it
               ;;   (cons '(purge . "allocate") it))
-              (org-tj--format-attributes it))))
+              (org-tj--format-attributes))))
     (s-join " " (list id name attrs))))
 
 (defun org-tj--build-declarations (type pd)
@@ -332,17 +345,6 @@ a unique id will be associated to it."
                         (intern it)
                         (funcall it pd))))
     (--map (org-tj--build-declaration attr-table it pd) headlines)))
-
-(defun org-tj--get-id (headline ids)
-  "Return id for task or resource ITEM and list of IDS."
-  (cdr (assq headline ids)))
-
-(defun org-tj--get-name (headline)
-  "Return name for task or resource HEADLINE.
-ITEM is a headline.  Return value is a string."
-  ;; Quote double quotes in name.
-  (replace-regexp-in-string
-   "\"" "\\\"" (org-element-property :raw-value headline) t t))
 
 (defun org-tj--get-start (headline &optional _pd)
   "Return start date for task or resource HEADLINE.
@@ -388,21 +390,23 @@ doesn't have any end date defined."
             (/ it (- org-lowest-priority org-highest-priority))
             (max 1 it)))
 
-(defun org-tj--get-inner-declaration (type headline pd)
+(defun org-tj--get-inner (sh-fun type headline pd)
   (let ((attr-table (alist-get type org-tj--attribute-alist)))
     (->>
-     (org-tj--subheadlines headline)
+     (funcall sh-fun headline)
      (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
      (--map (org-tj--build-declaration attr-table it pd)))))
 
+(defun org-tj--get-inner-declaration (type headline pd)
+  (org-tj--get-inner #'org-tj--subheadlines type headline pd))
+
 (defun org-tj--get-inner-reports (type headline pd)
-  (let ((attr-table (alist-get type org-tj--attribute-alist))
-        (kind (->> type (symbol-name) (s-chop-suffix "report"))))
-    (->>
-     (org-tj--subheadlines headline)
-     (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
-     (--filter (equal kind (org-tj--get-report-kind it)))
-     (--map (org-tj--build-declaration attr-table it pd)))))
+  (org-tj--get-inner
+   (lambda (hl)
+     (->> (org-tj--subheadlines hl)
+          (--filter (equal (symbol-name type)
+                           (org-tj--get-report-kind it)))))
+   type headline pd))
 
 ;;; dependencies
 
@@ -795,7 +799,6 @@ doesn't include leading \"depends\"."
   (-when-let (kws (org-tj--proc-data-keywords pd))
       (alist-get key kws default nil #'equal)))
 
-
 (defun org-tj--get-project-id (pd)
   (let* ((info (org-tj--proc-data-info pd))
          (kws (org-tj--proc-data-keywords pd))
@@ -807,11 +810,10 @@ doesn't include leading \"depends\"."
 
 (defun org-tj--get-project-version (pd)
   (->> (org-tj--get-kw pd "VERSION" org-tj-default-project-version)
-       (format "\"%s\"")))
+       (org-tj--quote-string)))
 
 (defun org-tj--get-project-name (pd)
-  (->> (org-tj--get-kw pd "NAME")
-       (format "\"%s\"")))
+  (->> (org-tj--get-kw pd "NAME") (org-tj--quote-string)))
 
 (defun org-tj--get-project-start (pd)
   ;; TODO the first task may not have a start date
@@ -835,25 +837,17 @@ doesn't include leading \"depends\"."
               (format "+%sd" org-tj-default-project-duration))))
     (org-tj--get-kw pd "END" default)))
 
-(defun org-tj--format-attrs (attrs)
-  (-some->> attrs
-            (--map (s-join " " it))
-            (s-join "\n")
-            (org-tj--indent-string)
-            (format "{\n%s\n}")))
-
 (defun org-tj--get-project-attributes (pd)
   ;; TODO set the default for this
   (let* ((kw-attrs
           (->> (org-tj--proc-data-keywords pd)
                (--filter (equal "ATTRIBUTE" (car it)))
-               (-map #'cdr)
-               (--map (let ((s (s-split-up-to " " it 1 t)))
-                        (cons (car s) (-drop 1 s))))))
+               (--map (let ((s (s-split-up-to " " (cdr it) 1 t)))
+                        (cons (make-symbol (nth 0 s)) (nth 1 s))))))
          (default-attrs
            (--> org-tj-default-attributes
                 (--remove (assoc-string (car it) kw-attrs) it))))
-    (org-tj--format-attrs (append kw-attrs default-attrs))))
+    (org-tj--format-attributes (append kw-attrs default-attrs))))
 
 (defun org-tj--get-copyright (pd)
   ;; TODO add default
@@ -934,6 +928,7 @@ ID is a string."
    ;; Make sure id doesn't start with a number.
    (replace-regexp-in-string "^\\([0-9]\\)" "_\\1" id)))
 
+;; TODO this can be refactored to be clearer
 (defun org-tj--build-unique-id (item unique-ids)
   "Return a unique id for a given task or a resource.
 ITEM is an `headline' type element representing the task or
@@ -1062,9 +1057,9 @@ parse tree of the buffer."
          (shifts (org-tj--get-shift-headlines tree))
          (resources (org-tj--get-resource-headlines tree))
          (reports (org-tj--get-report-headlines tree))
-         (textreports (org-tj--get-reports-kind reports "text"))
-         (taskreports (org-tj--get-reports-kind reports "task"))
-         (resourcereports (org-tj--get-reports-kind reports "resource")))
+         (textreports (org-tj--get-reports-kind reports "textreport"))
+         (taskreports (org-tj--get-reports-kind reports "taskreport"))
+         (resourcereports (org-tj--get-reports-kind reports "resourcereport")))
     (make-org-tj--proc-data
      :info info
      :tree tree
