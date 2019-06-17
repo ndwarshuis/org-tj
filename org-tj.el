@@ -47,13 +47,6 @@
   :tag "Org TJ3"
   :group 'org)
 
-(defcustom org-tj-use-id-property nil
-  "Use the :ID: property when t.
-Since this will class with the org-id functions, this is off by
-default and :TASK_ID: will be used instead."
-  :group 'org-tj3
-  :type 'boolean)
-
 (defcustom org-tj-config-file (-> "XDG_CONFIG_HOME"
                                    getenv
                                    file-name-as-directory
@@ -184,30 +177,6 @@ include reports.tji"
   :group 'org-export-taskjuggler
   :type '(repeat (string :tag "Report")))
 
-(defcustom org-tj-default-global-header ""
-  "Default global header for the project.
-This goes before project declaration, and might be useful for
-early macros."
-  :group 'org-export-taskjuggler
-  :type '(string :tag "Preamble"))
-
-(defcustom org-tj-default-global-properties
-  "shift s40 \"Part time shift\" {
-  workinghours wed, thu, fri off
-}
-"
-  "Default global properties for the project.
-
-Here you typically define global properties such as shifts,
-accounts, rates, vacation, macros and flags.  Any property that
-is allowed within the TaskJuggler file can be inserted.  You
-could for example include another TaskJuggler file.
-
-The global properties are inserted after the project declaration
-but before any resource and task declarations."
-  :group 'org-export-taskjuggler
-  :type '(string :tag "Preamble"))
-
 (defcustom org-tj-process-command
   "tj3 --silent --no-color --output-dir %o %f"
   "Command to process a Taskjuggler file.
@@ -226,13 +195,6 @@ If the directory is not an absolute path it is relative to the
 directory of the exported file.  The directory is created if it
 doesn't exist."
   :group 'org-export-taskjuggler)
-
-(defcustom org-tj-keep-project-as-task t
-  "Non-nil keeps the project headline as an umbrella task for all tasks.
-Setting this to nil will allow maintaining completely separated
-task buckets, while still sharing the same resources pool."
-  :group 'org-export-taskjuggler
-  :type 'boolean)
 
 ;;; Hooks
 
