@@ -926,41 +926,6 @@ doesn't include leading \"depends\"."
     (org-tj--get-project-attributes pd))
    (s-join " ")))
 
-
-
-(defconst org-tj--toplevel-alist
-  `((project . org-tj--get-project)
-    (copyright . org-tj--get-copyright)
-    (vacation . org-tj--get-vacation)
-    (flags . org-tj--get-flags)
-    (account . ,(-partial #'org-tj--build-declarations 'account))
-    (balance . org-tj--get-balance)
-    (leaves . org-tj--get-leaves)
-    (rate . org-tj--get-rate)
-    (limits . org-tj--get-limit)
-    (shift . ,(-partial #'org-tj--build-declarations 'shift))
-    (resource . ,(-partial #'org-tj--build-declarations 'resource))
-    (task . ,(-partial #'org-tj--build-declarations 'task))
-    (navigator . org-tj--get-navigator)
-    (textreport . ,(-partial #'org-tj--build-declarations 'textreport))
-    (taskreport . ,(-partial #'org-tj--build-declarations 'taskreport))
-    (resourcereport . ,(-partial #'org-tj--build-declarations 'resourcereport))))
-
-(defun org-tj--format-kws (pd)
-  (cl-flet
-      ((process
-        (cell)
-        (let ((name (car cell))
-              (fun (cdr cell)))
-          (-when-let (value (funcall fun pd))
-            (if (stringp value) (format "%s %s" name value)
-              (->> value
-                   (--map (format "%s %s" name it))
-                   (s-join "\n")))))))
-    (->> org-tj--toplevel-alist
-         (-map #'process)
-         (-non-nil))))
-
 ;;; process data structure
 
 (cl-defstruct (org-tj--proc-data
@@ -1140,6 +1105,41 @@ parse tree of the buffer."
      :textreports textreports
      :taskreports  taskreports
      :resourcereports resourcereports)))
+
+;;; build the tjp file
+
+(defconst org-tj--toplevel-alist
+  `((project . org-tj--get-project)
+    (copyright . org-tj--get-copyright)
+    (vacation . org-tj--get-vacation)
+    (flags . org-tj--get-flags)
+    (account . ,(-partial #'org-tj--build-declarations 'account))
+    (balance . org-tj--get-balance)
+    (leaves . org-tj--get-leaves)
+    (rate . org-tj--get-rate)
+    (limits . org-tj--get-limit)
+    (shift . ,(-partial #'org-tj--build-declarations 'shift))
+    (resource . ,(-partial #'org-tj--build-declarations 'resource))
+    (task . ,(-partial #'org-tj--build-declarations 'task))
+    (navigator . org-tj--get-navigator)
+    (textreport . ,(-partial #'org-tj--build-declarations 'textreport))
+    (taskreport . ,(-partial #'org-tj--build-declarations 'taskreport))
+    (resourcereport . ,(-partial #'org-tj--build-declarations 'resourcereport))))
+
+(defun org-tj--format-kws (pd)
+  (cl-flet
+      ((process
+        (cell)
+        (let ((name (car cell))
+              (fun (cdr cell)))
+          (-when-let (value (funcall fun pd))
+            (if (stringp value) (format "%s %s" name value)
+              (->> value
+                   (--map (format "%s %s" name it))
+                   (s-join "\n")))))))
+    (->> org-tj--toplevel-alist
+         (-map #'process)
+         (-non-nil))))
 
 (defun org-tj--build-tjp-file (_contents info)
   "Build full contents of a taskjuggler project file.
