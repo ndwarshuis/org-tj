@@ -261,6 +261,25 @@ This hook is run with the name of the file as argument.")
 ;;                    `(advice-remove ,(car adform) ,(nth 2 adform)))
 ;;                  adlist))))
 
+;;; Internal Functions
+
+(defun org-tj--indent-string (s)
+  "Indent string S by 2 spaces.
+Return new string.  If S is the empty string, return it."
+  (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
+
+(defun org-tj--subheadlines (headline)
+  "Return subheadings under HEADLINE if any."
+  (let ((contents (org-element-contents headline)))
+    (if (assoc 'section contents) (cdr contents) contents)))
+
+(defun org-tj--get-report-kind (headline)
+  (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
+    (if (member kind '("text" "task" "resource")) kind
+      (error "unknown kind: %s" kind))
+    (->> (org-element-property :raw-value)
+         (error "kind not specified for headline \"%s\""))))
+
 ;;; headline attributes
 
 (defun org-tj--build-attributes (attr-alist headline pd)
@@ -784,13 +803,6 @@ doesn't include leading \"depends\"."
    (--first (equal (org-element-property :name it) attribute) it)
    (org-tj--src-to-rich-text it)))
 
-;;; Internal Functions
-
-(defun org-tj--indent-string (s)
-  "Indent string S by 2 spaces.
-Return new string.  If S is the empty string, return it."
-  (if (equal "" s) s (replace-regexp-in-string "^ *\\S-" "  \\&" s)))
-
 ;;; project declaration
 
 (defun org-tj--get-kw-list (pd key &optional sep)
@@ -948,20 +960,6 @@ Return new string.  If S is the empty string, return it."
     (->> org-tj--toplevel-alist
          (-map #'process)
          (-non-nil))))
-
-;;; Translator Functions
-
-(defun org-tj--subheadlines (headline)
-  "Return subheadings under HEADLINE if any."
-  (let ((contents (org-element-contents headline)))
-    (if (assoc 'section contents) (cdr contents) contents)))
-
-(defun org-tj--get-report-kind (headline)
-  (-if-let (kind (org-element-property :TJ3_REPORT_KIND headline))
-    (if (member kind '("text" "task" "resource")) kind
-      (error "unknown kind: %s" kind))
-    (->> (org-element-property :raw-value)
-         (error "kind not specified for headline \"%s\""))))
 
 ;;; process data structure
 
