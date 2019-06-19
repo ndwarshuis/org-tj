@@ -60,7 +60,7 @@
 ;; TODO need a way to validate attributes? see the project manual
 ;; page for what is allowed
 (defcustom org-tj-default-attributes
-  '(("timingresolution" . "5 min"))
+  '((timingresolution . "5 min"))
   "Default project attributes."
   :group 'org-tj3)
 
