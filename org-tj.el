@@ -810,13 +810,14 @@ doesn't include leading \"depends\"."
   (->> (org-tj--get-kw pd "NAME") (org-tj--quote-string)))
 
 (defun org-tj--get-project-start (pd)
-  ;; TODO the first task may not have a start date
   ;; TODO convert org timestamps to tj3 format
-  (let ((default (or (-some->>
-                      (org-tj--proc-data-tasks pd)
-                      (car)
-                      (org-tj--get-start))
-                     (format-time-string "%Y-%m-%d"))))
+  (let* ((earliest-task-ts
+          (-some--> (org-tj--proc-data-tasks pd)
+                    (org-element-map it 'headline #'identity)
+                    (--map (org-2ft (org-tj--get-start it)) it)
+                    (--remove (= 0 it) it)
+                    (-min it)))
+         (default (format-time-string "%Y-%m-%d" earliest-task-ts)))
     (org-tj--get-kw pd "START" default)))
 
 (defun org-tj--get-project-end (pd)
