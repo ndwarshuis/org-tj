@@ -169,8 +169,7 @@ or simply define the default reports so that they include an
 external report definition as follows:
 
 include reports.tji"
-  :group 'org-export-taskjuggler
-  :type '(repeat (string :tag "Report")))
+  :group 'org-export-taskjuggler)
 
 (defcustom org-tj-process-command
   "tj3 --silent --no-color --output-dir %o %f"
