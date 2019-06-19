@@ -420,12 +420,16 @@ doesn't have any end date defined."
     (-when-let (id (org-tj--get-id parent ids))
       (cons id (org-tj--get-parent-ids parent ids)))))
 
+(defconst org-tj--previous-sibling "previous-sibling"
+  "String identifing dependencies that rely on the previous
+sibling in the org subtree.")
+
 (defun org-tj--resolve-dependency (headline pd dep-id)
   (let ((ids (org-tj--proc-data-ids pd)))
     (cl-flet
         ((get-dep-task
           (dep-id)
-          (if (and (equal dep-id "previous-sibling")
+          (if (and (equal dep-id org-tj--previous-sibling)
                    (not (org-export-first-sibling-p headline nil)))
               (org-export-get-previous-element headline nil)
             ;; TODO warn here if we get more than one headline for an ID
@@ -454,12 +458,12 @@ doesn't have any end date defined."
                      (org-tj--get-dep-alist :TJ3_DEPENDS headline)
                      (append (org-tj--get-dep-alist :BLOCKER headline))
                      (-non-nil)))
-         (wants-previous? (assoc "previous-sibling" dep-alist))
+         (wants-previous? (assoc org-tj--previous-sibling dep-alist))
          (wants-ordered? (->> (org-export-get-parent headline)
                               (org-element-property :ORDERED))))
     (-some->>
      (if (and (not wants-previous?) wants-ordered?)
-         (cons '("previous-sibling") dep-alist)
+         (cons '(org-tj--previous-sibling) dep-alist)
        dep-alist)
      (--map (cons (org-tj--resolve-dependency headline pd (car it))
                   (cdr it)))
