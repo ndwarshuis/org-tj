@@ -133,9 +133,9 @@ marked with `org-tj-project-tag'"
   :type 'integer)
 
 (defcustom org-tj-default-reports
-  '("textreport report \"Plan\" {
+  '((textreport . "report \"Plan\" {
   formats html
-  header '== %title =='
+  header '== TaskJuggler Report =='
 
   center -8<-
     [#Plan Plan] | [#Resource_Allocation Resource Allocation]
@@ -146,25 +146,20 @@ marked with `org-tj-project-tag'"
     === Resource Allocation ===
     <[report id=\"resourceGraph\"]>
   ->8-
-}
-
-# A traditional Gantt chart with a project overview.
-taskreport plan \"\" {
+}")
+    (taskreport . "plan \"\" {
   headline \"Project Plan\"
   columns bsi, name, start, end, effort, chart
   loadunit shortauto
   hideresource 1
-}
-
-# A graph showing resource allocation. It identifies whether each
-# resource is under- or over-allocated for.
-resourcereport resourceGraph \"\" {
+}")
+    (resourcereport . "resourceGraph \"\" {
   headline \"Resource Allocation Graph\"
   columns no, name, effort, weekly
   loadunit shortauto
   hidetask ~(isleaf() & isleaf_())
   sorttasks plan.start.up
-}")
+}"))
   "Default reports for the project.
 These are sensible default reports to give a good out-of-the-box
 result when exporting without defining any reports.  \"%title\"
@@ -369,6 +364,44 @@ doesn't have any end date defined."
           (--filter (equal (symbol-name type)
                            (org-tj--get-report-kind it)))))
    type headline pd))
+
+(defun org-tj--get-accounts (pd)
+  (org-tj--build-declarations 'account pd))
+
+(defun org-tj--get-shifts (pd)
+  (org-tj--build-declarations 'shift pd))
+
+(defun org-tj--get-tasks (pd)
+  (org-tj--build-declarations 'task pd))
+
+(defun org-tj--get-resources (pd)
+  (-if-let (res (org-tj--build-declarations 'resource pd))
+      res
+    ;; TODO need a var for the default user name and id
+    (let ((id (user-login-name))
+          (name (org-tj--quote-string (user-full-name))))
+      (format "%s %s" id name))))
+
+(defun org-tj--get-textreport (pd)
+  (if (not (or (org-tj--proc-data-textreports pd)
+                (org-tj--proc-data-taskreports pd)
+                (org-tj--proc-data-resourcereports pd)))
+      (alist-get 'textreport org-tj-default-reports)
+    (org-tj--build-declarations 'textreport pd)))
+
+(defun org-tj--get-taskreport (pd)
+  (if (not (or (org-tj--proc-data-textreports pd)
+                (org-tj--proc-data-taskreports pd)
+                (org-tj--proc-data-resourcereports pd)))
+      (alist-get 'taskreport org-tj-default-reports)
+  (org-tj--build-declarations 'taskreport pd)))
+
+(defun org-tj--get-resourcereport (pd)
+  (if (not (or (org-tj--proc-data-textreports pd)
+                (org-tj--proc-data-taskreports pd)
+                (org-tj--proc-data-resourcereports pd)))
+      (alist-get 'resourcereport org-tj-default-reports)
+  (org-tj--build-declarations 'resourcereport pd)))
 
 ;;; dependencies
 
@@ -1046,18 +1079,18 @@ parse tree of the buffer."
     (copyright . org-tj--get-copyright)
     (vacation . org-tj--get-vacation)
     (flags . org-tj--get-flags)
-    (account . ,(-partial #'org-tj--build-declarations 'account))
+    (account . org-tj--get-accounts)
     (balance . org-tj--get-balance)
     (leaves . org-tj--get-leaves)
     (rate . org-tj--get-rate)
     (limits . org-tj--get-limit)
-    (shift . ,(-partial #'org-tj--build-declarations 'shift))
-    (resource . ,(-partial #'org-tj--build-declarations 'resource))
-    (task . ,(-partial #'org-tj--build-declarations 'task))
+    (shift . org-tj--get-shifts)
+    (resource . org-tj--get-resources)
+    (task . org-tj--get-tasks)
     (navigator . org-tj--get-navigator)
-    (textreport . ,(-partial #'org-tj--build-declarations 'textreport))
-    (taskreport . ,(-partial #'org-tj--build-declarations 'taskreport))
-    (resourcereport . ,(-partial #'org-tj--build-declarations 'resourcereport))))
+    (textreport . org-tj--get-textreport)
+    (taskreport . org-tj--get-taskreport)
+    (resourcereport . org-tj--get-resourcereport)))
 
 (defun org-tj--format-kws (pd)
   (cl-flet
