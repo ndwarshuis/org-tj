@@ -404,77 +404,69 @@ doesn't have any end date defined."
 
 ;;; dependencies
 
-(defun org-tj--resolve-dependencies (task pd)
-  "Return a list of all tasks on which TASK depends."
-  ;; TODO add blocker eventually, baby steps
-  (let* ((deps-ids (-some->>
-                    (org-element-property :TJ3_DEPENDS task)
-                    (s-replace-regexp "{.*}" "")
-                    (s-split ",")
-                    (-map #'s-trim)))
-         (wants-prev-sibling?
-          (and
-           (member-ignore-case "previous-sibling" deps-ids)
-           (not (org-export-first-sibling-p task nil))))
-         (is-ordered?
-          (and
-           (org-element-property :ORDERED (org-export-get-parent task))
-           (not (org-export-first-sibling-p task nil))))
-         (prev-task
-          (when (or wants-prev-sibling? is-ordered?)
-            (list (org-export-get-previous-element task nil))))
-         (depends
-          (if (not deps-ids) prev-task
+(defun org-tj--get-dep-alist (property task)
+  ;; TODO what if there are dupes?
+  (-some->>
+   (org-element-property property task)
+   (s-split ",")
+   (-map #'s-trim)
+   (--map (let* ((slice (s-split-up-to " " it 1))
+                 (dep (nth 0 slice))
+                 (attrs (nth 1 slice)))
+            (if attrs (cons dep attrs) (list dep))))))
+
+(defun org-tj--get-parent-ids (headline ids)
+  (-when-let (parent (org-export-get-parent headline))
+    (-when-let (id (org-tj--get-id parent ids))
+      (cons id (org-tj--get-parent-ids parent ids)))))
+
+(defun org-tj--resolve-dependency (headline pd dep-id)
+  (let ((ids (org-tj--proc-data-ids pd)))
+    (cl-flet
+        ((get-dep-task
+          (dep-id)
+          (if (and (equal dep-id "previous-sibling")
+                   (not (org-export-first-sibling-p headline nil)))
+              (org-export-get-previous-element headline nil)
+            ;; TODO warn here if we get more than one headline for an ID
             (--> (org-tj--proc-data-tasks pd)
                  (org-element-map it 'headline
-                   (lambda (task)
-                     (-when-let (task-id
-                                 (or (org-element-property :TJ3_ID task)
-                                     (org-element-property :ID task)))
-                       (when (member task-id deps-ids) task))))
-                 (append prev-task it)
+                   (lambda (hl)
+                     (when (equal (org-element-property :TJ3_ID hl) dep-id)
+                       hl)))
                  (-non-nil it)
-                 (-uniq it)))))
-    depends))
-
-(defun org-tj--format-dependencies (dependencies task ids)
-  "Format DEPENDENCIES to match TaskJuggler syntax.
-DEPENDENCIES is list of dependencies for TASK, as returned by
-`org-tj-resolve-depedencies'.  TASK is a headline.
-INFO is a plist used as a communication channel.  Return value
-doesn't include leading \"depends\"."
-  (let* ((dep-list (-some->> (org-element-property :TJ3_DEPENDS task)
-                             (s-split ",")))
-         (block-list (-some->> (org-element-property :BLOCKER task)
-                               (s-split ",")))
-         (dep-alist
-          (->> (append dep-list block-list)
-               (-non-nil)
-               (--map (let* ((slice (s-split-up-to " " it 1))
-                             (dep (nth 0 slice))
-                             (attrs (nth 1 slice)))
-                        (if attrs (cons dep attrs) dep))))))
-    (cl-labels
-        ((get-parent-ids
-          (headline)
-          (-when-let (parent (org-export-get-parent headline))
-            (-when-let (id (org-tj--get-id parent ids))
-              (cons id (get-parent-ids parent)))))
+                 (-uniq it)
+                 (if (< 1 (length it)) (error "Dep Clash") it)
+                 (-first-item it))))
          (get-path
           (dep)
           (let* ((id (org-tj--get-id dep ids))
-                 (parent-ids (reverse (get-parent-ids dep)))
-                 (path (s-join "." (append parent-ids (list id)))))
-            (-if-let (attributes (alist-get id dep-alist nil nil #'equal))
-                (format "%s %s" path attributes)
-              path))))
-      (-some->> (-map #'get-path dependencies)
-                (s-join ", ")))))
+                 (parent-ids (reverse (org-tj--get-parent-ids dep ids))))
+            (s-join "." (append parent-ids (list id))))))
+      ;; TODO need to resolve absolute paths somehow
+      (-some->> dep-id
+                (get-dep-task)
+                (get-path)))))
 
 (defun org-tj--get-depends (headline pd)
-  (let ((ids (org-tj--proc-data-ids pd)))
-    (-when-let (depends (org-tj--resolve-dependencies headline pd))
-      (org-tj--format-dependencies depends headline ids))))
+  "Return a list of all tasks on which TASK depends."
+  (let* ((dep-alist (->>
+                     (org-tj--get-dep-alist :TJ3_DEPENDS headline)
+                     (append (org-tj--get-dep-alist :BLOCKER headline))
+                     (-non-nil)))
+         (wants-previous? (assoc "previous-sibling" dep-alist))
+         (wants-ordered? (->> (org-export-get-parent headline)
+                              (org-element-property :ORDERED))))
+    (-some->>
+     (if (and (not wants-previous?) wants-ordered?)
+         (cons '("previous-sibling") dep-alist)
+       dep-alist)
+     (--map (cons (org-tj--resolve-dependency headline pd (car it))
+                  (cdr it)))
+     (-filter #'car)
+     (--map (-if-let (attrs (cdr it))
+                (format "%s %s" (car it) attrs) (car it)))
+     (s-join ", "))))
 
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
