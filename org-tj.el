@@ -171,6 +171,10 @@ external report definition as follows:
 include reports.tji"
   :group 'org-export-taskjuggler)
 
+(defcustom org-tj-ignored-keywords nil
+  "Which keywords to ignore when parsing trees"
+  :group 'org-export-taskjuggler)
+
 (defcustom org-tj-process-command
   "tj3 --silent --no-color --output-dir %o %f"
   "Command to process a Taskjuggler file.
