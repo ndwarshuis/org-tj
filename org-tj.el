@@ -429,7 +429,11 @@ doesn't have any end date defined."
   "String identifing dependencies that rely on the previous
 sibling in the org subtree.")
 
+;; TODO this is actually a pretty silly function
+;; the only thing it really needs to do is check that the reference
+;; is sane or else throw an error
 (defun org-tj--resolve-dependency (headline pd dep-id)
+  (print dep-id)
   (let ((ids (org-tj--proc-data-ids pd)))
     (cl-flet
         ((get-dep-task
@@ -457,25 +461,34 @@ sibling in the org subtree.")
                 (get-dep-task)
                 (get-path)))))
 
-(defun org-tj--get-depends (headline pd)
+(defun org-tj--get-reference (headline pd ref-alist &optional previous?)
   "Return a list of all tasks on which TASK depends."
-  (let* ((dep-alist (->>
-                     (org-tj--get-dep-alist :TJ3_DEPENDS headline)
-                     (append (org-tj--get-dep-alist :BLOCKER headline))
-                     (-non-nil)))
-         (wants-previous? (assoc org-tj--previous-sibling dep-alist))
-         (wants-ordered? (->> (org-export-get-parent headline)
-                              (org-element-property :ORDERED))))
+  (let* ((wants-previous? (and
+                           previous?
+                           (assoc org-tj--previous-sibling ref-alist)))
+         (wants-ordered? (and previous?
+                              (->> (org-export-get-parent headline)
+                                   (org-element-property :ORDERED)))))
     (-some->>
      (if (and (not wants-previous?) wants-ordered?)
-         (cons '(org-tj--previous-sibling) dep-alist)
-       dep-alist)
+         (cons (list org-tj--previous-sibling) ref-alist)
+       ref-alist)
      (--map (cons (org-tj--resolve-dependency headline pd (car it))
                   (cdr it)))
      (-filter #'car)
      (--map (-if-let (attrs (cdr it))
                 (format "%s %s" (car it) attrs) (car it)))
      (s-join ", "))))
+
+(defun org-tj--get-depends (headline pd)
+  (--> (org-tj--get-dep-alist :TJ3_DEPENDS headline)
+       (append it (org-tj--get-dep-alist :BLOCKER headline))
+       (-non-nil it)
+       (org-tj--get-reference headline pd it t)))
+
+(defun org-tj--get-precedes (headline pd)
+  (->> (org-tj--get-dep-alist :TJ3_PRECEDES headline)
+       (org-tj--get-reference headline pd)))
 
 (defun org-tj--src-to-rich-text (src-block)
   "Convert org SRC-BLOCK to rich text. Return formatted string."
@@ -709,7 +722,7 @@ sibling in the org subtree.")
               (minstart . :TJ3_MINSTART)
               (note . :TJ3_NOTE)
               (period . :TJ3_PERIOD)
-              (precedes . :TJ3_PRECEDES)
+              (precedes . org-tj--get-precedes)
               (priority . org-tj--get-priority)
               (projectid . :TJ3_PROJECTID)
               (purge . :TJ3_PURGE)
