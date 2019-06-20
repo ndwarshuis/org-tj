@@ -351,6 +351,7 @@ doesn't have any end date defined."
     (->>
      (funcall sh-fun headline)
      (--remove (member org-tj-ignore-tag (org-element-property :tags it)))
+     (--remove (member (org-element-property :todo-keyword it) org-tj-ignored-keywords))
      (--map (org-tj--build-declaration attr-table it pd)))))
 
 (defun org-tj--get-inner-declaration (type headline pd)
@@ -1006,7 +1007,11 @@ siblings."
 (defun org-tj--get-tagged-headlines (tree tag)
   ;; TODO what if we have tags in the subtree, we don't need those
   (org-element-map tree 'headline
-    (lambda (hl) (when (member tag (org-element-property :tags hl)) hl))))
+    (lambda (hl)
+      (when (and (member tag (org-element-property :tags hl))
+                 (not (member (org-element-property :todo-keyword hl)
+                              org-tj-ignored-keywords)))
+        hl))))
 
 (defun org-tj--get-task-headlines (tree)
   "Return list of headlines marked with `org-tj-project-tag'.
