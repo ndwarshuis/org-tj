@@ -852,11 +852,21 @@ sibling in the org subtree.")
           (->> (org-tj--proc-data-keywords pd)
                (--filter (equal "ATTRIBUTE" (car it)))
                (--map (let ((s (s-split-up-to " " (cdr it) 1 t)))
-                        (cons (make-symbol (nth 0 s)) (nth 1 s))))))
+                        (cons (intern (nth 0 s)) (nth 1 s))))))
          (default-attrs
            (--> org-tj-default-attributes
                 (--remove (assoc-string (car it) kw-attrs) it))))
-    (org-tj--format-attributes (append kw-attrs default-attrs))))
+    (cl-flet
+        ((move-to-front
+          (attribute list)
+          (-if-let (item (assoc attribute list))
+              (cons item (remove item list))
+            list)))
+      (->> (append kw-attrs default-attrs)
+           ;; timingresolution and timezone should be first
+           (move-to-front 'timezone)
+           (move-to-front 'timingresolution)
+           (org-tj--format-attributes)))))
 
 (defun org-tj--get-copyright (pd)
   ;; TODO add default
